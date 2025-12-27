@@ -1,0 +1,23 @@
+{
+  "name": "dex-trading-bot",
+  "version": "1.0.0",
+  "description": "Autonomous multi-chain DEX trading bot with paper trading mode",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "paper": "MODE=PAPER node src/index.js",
+    "readonly": "MODE=READ_ONLY node src/index.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": ["dex", "trading", "bot", "defi", "bsc", "base", "solana"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "@solana/web3.js": "^1.87.6",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1"
+  }
+}

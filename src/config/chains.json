@@ -1,0 +1,64 @@
+{
+    "bsc": {
+        "id": "bsc",
+        "name": "BNB Smart Chain",
+        "chainId": 56,
+        "rpcDefault": "https://bsc-dataseed.binance.org",
+        "rpcBackups": [
+            "https://bsc-dataseed1.binance.org",
+            "https://bsc-dataseed2.binance.org",
+            "https://bsc-dataseed3.binance.org"
+        ],
+        "explorer": "https://bscscan.com",
+        "dex": {
+            "name": "PancakeSwap",
+            "router": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+            "factory": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73"
+        },
+        "nativeToken": {
+            "symbol": "BNB",
+            "decimals": 18
+        },
+        "dexscreenerId": "bsc"
+    },
+    "base": {
+        "id": "base",
+        "name": "Base",
+        "chainId": 8453,
+        "rpcDefault": "https://mainnet.base.org",
+        "rpcBackups": [
+            "https://base.llamarpc.com",
+            "https://base.publicnode.com"
+        ],
+        "explorer": "https://basescan.org",
+        "dex": {
+            "name": "Aerodrome",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+        },
+        "nativeToken": {
+            "symbol": "ETH",
+            "decimals": 18
+        },
+        "dexscreenerId": "base"
+    },
+    "solana": {
+        "id": "solana",
+        "name": "Solana",
+        "chainId": null,
+        "rpcDefault": "https://api.mainnet-beta.solana.com",
+        "rpcBackups": [
+            "https://solana-mainnet.g.alchemy.com/v2/demo"
+        ],
+        "explorer": "https://solscan.io",
+        "dex": {
+            "name": "Raydium",
+            "programId": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
+        },
+        "nativeToken": {
+            "symbol": "SOL",
+            "decimals": 9
+        },
+        "dexscreenerId": "solana"
+    }
+}

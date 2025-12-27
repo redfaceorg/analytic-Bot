@@ -1,0 +1,23 @@
+# Environment files (NEVER commit!)
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# State files
+data/state.json
+data/*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
