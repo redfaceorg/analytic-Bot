@@ -22,26 +22,35 @@ let userConfig = { ...config };
  * Main function
  */
 async function main() {
+    // Check if running in CI/cloud mode (non-interactive)
+    const isNonInteractive = process.env.CI || process.env.FLY_APP_NAME || !process.stdin.isTTY;
+
     // Display welcome banner
     displayBanner();
 
     // Check if profit multiplier is set
     if (!config.takeProfit.multiplier) {
-        const multiplier = await promptProfitMultiplier();
-        userConfig.takeProfit.multiplier = multiplier;
-
-        // Update the config module (simple override)
-        config.takeProfit.multiplier = multiplier;
+        if (isNonInteractive) {
+            // Default to 5x in non-interactive mode
+            config.takeProfit.multiplier = 5;
+            console.log('  ✅ Using default profit multiplier: 5x (non-interactive mode)');
+        } else {
+            const multiplier = await promptProfitMultiplier();
+            config.takeProfit.multiplier = multiplier;
+        }
     } else {
         console.log(`  ✅ Using profit multiplier from env: ${config.takeProfit.multiplier}x`);
     }
 
-    // Confirm settings
-    const confirmed = await confirmStart(config);
-
-    if (!confirmed) {
-        console.log('  👋 Bot cancelled by user');
-        process.exit(0);
+    // Skip confirmation in non-interactive mode
+    if (!isNonInteractive) {
+        const confirmed = await confirmStart(config);
+        if (!confirmed) {
+            console.log('  👋 Bot cancelled by user');
+            process.exit(0);
+        }
+    } else {
+        console.log('  ✅ Auto-starting in non-interactive mode...');
     }
 
     // Display kill switch info
