@@ -28,5 +28,9 @@ ENV STOP_LOSS_PERCENT=5
 ENV MAX_HOLD_MINUTES=30
 ENV ENABLE_LIVE_TRADING=false
 
+# Expose health check port
+ENV PORT=8000
+EXPOSE 8000
+
 # Run the bot
 CMD ["node", "src/index.js"]

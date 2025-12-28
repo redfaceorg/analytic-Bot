@@ -14,6 +14,28 @@ import config from './config/index.js';
 import { displayBanner, promptProfitMultiplier, confirmStart, displayKillSwitch } from './utils/prompt.js';
 import { start, stop, getStatus } from './automation/scheduler.js';
 import { logInfo, logError } from './logging/logger.js';
+import http from 'http';
+
+// Health check server for cloud deployments (Koyeb, etc.)
+const PORT = process.env.PORT || 8000;
+const healthServer = http.createServer((req, res) => {
+    const status = getStatus();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+        status: 'running',
+        mode: config.mode,
+        positions: status.openPositions,
+        watchlist: status.watchlistSize,
+        uptime: process.uptime()
+    }));
+});
+
+// Start health server in cloud environment
+if (process.env.PORT || process.env.KOYEB_REGION) {
+    healthServer.listen(PORT, () => {
+        console.log(`Health check server running on port ${PORT}`);
+    });
+}
 
 // Update config with profit multiplier
 let userConfig = { ...config };
