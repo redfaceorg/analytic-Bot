@@ -79,14 +79,14 @@ ${statusEmoji} <b>Status:</b> ${status.isRunning ? 'Running' : 'Stopped'}
 ${modeEmoji} <b>Mode:</b> ${status.mode}
 
 📊 <b>Portfolio</b>
-┌ Balance: <code>$${status.balance.toFixed(2)}</code>
-├ Positions: <code>${status.positions}</code>
-└ Watchlist: <code>${status.watchlist} tokens</code>
+┌ Balance: <code>$${(status.balance || 0).toFixed(2)}</code>
+├ Positions: <code>${status.positions || 0}</code>
+└ Watchlist: <code>${status.watchlist || 0} tokens</code>
 
 📈 <b>Today's Performance</b>
-┌ PnL: <code>${status.dailyPnl >= 0 ? '+' : ''}$${status.dailyPnl.toFixed(2)}</code>
-├ Trades: <code>${status.dailyTrades}</code>
-└ Win Rate: <code>${status.winRate.toFixed(0)}%</code>
+┌ PnL: <code>${(status.dailyPnl || 0) >= 0 ? '+' : ''}$${(status.dailyPnl || 0).toFixed(2)}</code>
+├ Trades: <code>${status.dailyTrades || 0}</code>
+└ Win Rate: <code>${(status.winRate || 0).toFixed(0)}%</code>
 
 ⏱ <b>Uptime:</b> ${formatUptime(status.uptime)}
 
@@ -440,16 +440,16 @@ ${BOT_NAME} <b>PnL Report</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
 💰 <b>All Time</b>
-┌ Total PnL: <code>${summary.totalPnl >= 0 ? '+' : ''}$${summary.totalPnl.toFixed(2)}</code>
-├ Total Trades: <code>${summary.totalTrades}</code>
-├ Win Rate: <code>${summary.winRate.toFixed(1)}%</code>
-└ Profit Factor: <code>${summary.profitFactor.toFixed(2)}</code>
+┌ Total PnL: <code>${(summary.totalPnl || 0) >= 0 ? '+' : ''}$${(summary.totalPnl || 0).toFixed(2)}</code>
+├ Total Trades: <code>${summary.totalTrades || 0}</code>
+├ Win Rate: <code>${(summary.winRate || 0).toFixed(1)}%</code>
+└ Profit Factor: <code>${(summary.profitFactor || 0).toFixed(2)}</code>
 
 📊 <b>Statistics</b>
-┌ Wins: <code>${summary.wins}</code>
-├ Losses: <code>${summary.losses}</code>
-├ Best Trade: <code>+$${summary.biggestWin.toFixed(2)}</code>
-└ Worst Trade: <code>-$${summary.biggestLoss.toFixed(2)}</code>
+┌ Wins: <code>${summary.wins || 0}</code>
+├ Losses: <code>${summary.losses || 0}</code>
+├ Best Trade: <code>+$${(summary.biggestWin || 0).toFixed(2)}</code>
+└ Worst Trade: <code>-$${(summary.biggestLoss || 0).toFixed(2)}</code>
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
