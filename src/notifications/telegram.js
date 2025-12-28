@@ -11,6 +11,7 @@ import { logInfo, logError } from '../logging/logger.js';
 import { getStatus } from '../automation/scheduler.js';
 import { getBalance, getOpenPositions } from '../automation/state.js';
 import { getPnLSummary } from '../logging/pnlTracker.js';
+import { getWalletSummary, getAllBalances, createEvmWallet, createSolanaWallet, hasEvmWallet, hasSolanaWallet } from '../wallet/walletManager.js';
 import config from '../config/index.js';
 
 // Telegram config
@@ -114,8 +115,8 @@ function getMainMenuKeyboard() {
             { text: '💼 Positions', callback_data: 'positions' }
         ],
         [
-            { text: '📈 PnL', callback_data: 'pnl' },
-            { text: '🔔 Signals', callback_data: 'signals' }
+            { text: '💰 Wallet', callback_data: 'wallet' },
+            { text: '📈 PnL', callback_data: 'pnl' }
         ],
         [
             { text: '⚙️ Settings', callback_data: 'settings' },
@@ -491,6 +492,195 @@ Volume Spike Scalping
     return sendMessage(message, getMainMenuKeyboard());
 }
 
+/**
+ * Wallet keyboard
+ */
+function getWalletKeyboard(hasEvm, hasSol) {
+    const keyboard = [];
+
+    if (!hasEvm) {
+        keyboard.push([{ text: '🆕 Create EVM Wallet', callback_data: 'wallet_create_evm' }]);
+    }
+    if (!hasSol) {
+        keyboard.push([{ text: '🆕 Create Solana Wallet', callback_data: 'wallet_create_sol' }]);
+    }
+
+    keyboard.push([
+        { text: '📥 Import Wallet', callback_data: 'wallet_import' }
+    ]);
+
+    if (hasEvm || hasSol) {
+        keyboard.push([
+            { text: '💰 Refresh Balances', callback_data: 'wallet_balance' }
+        ]);
+    }
+
+    // Mode toggle
+    const currentMode = config.mode;
+    keyboard.push([
+        { text: currentMode === 'PAPER' ? '🔴 Switch to LIVE' : '📝 Switch to PAPER', callback_data: 'wallet_toggle_mode' }
+    ]);
+
+    keyboard.push([{ text: '◀️ Back', callback_data: 'menu' }]);
+
+    return keyboard;
+}
+
+/**
+ * Handle /wallet command
+ */
+export async function handleWallet() {
+    const summary = getWalletSummary();
+    const balances = await getAllBalances();
+
+    let walletList = '';
+
+    if (summary.hasEvm) {
+        walletList += `
+🔷 <b>EVM (BSC/Base)</b>
+Address: <code>${summary.evmAddress}</code>
+BSC: <code>${balances.bsc.native.toFixed(4)} ${balances.bsc.symbol || 'BNB'}</code> (~$${balances.bsc.usd.toFixed(2)})
+Base: <code>${balances.base.native.toFixed(4)} ${balances.base.symbol || 'ETH'}</code> (~$${balances.base.usd.toFixed(2)})
+`;
+    }
+
+    if (summary.hasSolana) {
+        walletList += `
+🟣 <b>Solana</b>
+Address: <code>${summary.solanaAddress}</code>
+Balance: <code>${balances.solana.native.toFixed(4)} SOL</code> (~$${balances.solana.usd.toFixed(2)})
+`;
+    }
+
+    if (!summary.hasEvm && !summary.hasSolana) {
+        walletList = `
+<i>No wallets configured</i>
+Create or import a wallet to enable live trading.
+`;
+    }
+
+    const modeEmoji = config.mode === 'LIVE' ? '🔴' : '📝';
+
+    const message = `
+${BOT_NAME} <b>Wallet</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+${modeEmoji} <b>Mode:</b> ${config.mode}
+${walletList}
+💵 <b>Total:</b> ~$${balances.totalUsd.toFixed(2)}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, getWalletKeyboard(summary.hasEvm, summary.hasSolana));
+}
+
+/**
+ * Handle wallet creation
+ */
+export async function handleCreateEvmWallet() {
+    const result = createEvmWallet();
+
+    if (!result.success) {
+        return sendMessage(`❌ Failed to create wallet: ${result.error}`);
+    }
+
+    const message = `
+${BOT_NAME} <b>New EVM Wallet Created</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ <b>Wallet Created Successfully!</b>
+
+📍 <b>Address:</b>
+<code>${result.address}</code>
+
+🔐 <b>Private Key:</b>
+<code>${result.privateKey}</code>
+
+⚠️ <b>IMPORTANT:</b>
+• Save this private key securely
+• Never share it with anyone
+• Fund this wallet before trading
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, getWalletKeyboard(true, hasSolanaWallet()));
+}
+
+/**
+ * Handle Solana wallet creation
+ */
+export async function handleCreateSolanaWallet() {
+    const result = await createSolanaWallet();
+
+    if (!result.success) {
+        return sendMessage(`❌ Failed to create wallet: ${result.error}`);
+    }
+
+    const message = `
+${BOT_NAME} <b>New Solana Wallet Created</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ <b>Wallet Created Successfully!</b>
+
+📍 <b>Address:</b>
+<code>${result.address}</code>
+
+🔐 <b>Private Key:</b>
+<code>${result.privateKey}</code>
+
+⚠️ <b>IMPORTANT:</b>
+• Save this private key securely
+• Never share it with anyone
+• Fund this wallet before trading
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, getWalletKeyboard(hasEvmWallet(), true));
+}
+
+/**
+ * Handle mode toggle
+ */
+export async function handleToggleMode() {
+    const currentMode = config.mode;
+    const newMode = currentMode === 'PAPER' ? 'LIVE' : 'PAPER';
+
+    // Check if wallets exist for live mode
+    if (newMode === 'LIVE' && !hasEvmWallet() && !hasSolanaWallet()) {
+        const message = `
+${BOT_NAME} <b>Cannot Switch to LIVE</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ <b>No wallet configured!</b>
+
+Please create or import a wallet first before switching to LIVE mode.
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim();
+        return sendMessage(message, getWalletKeyboard(false, false));
+    }
+
+    // Toggle mode
+    config.mode = newMode;
+
+    const emoji = newMode === 'LIVE' ? '🔴' : '📝';
+    const message = `
+${BOT_NAME} <b>Mode Changed</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+${emoji} <b>Mode:</b> ${newMode}
+
+${newMode === 'LIVE' ? '⚠️ <b>WARNING:</b> Real funds will be used!' : '✅ Paper trading mode - no real funds used'}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, getMainMenuKeyboard());
+}
+
 export default {
     isTelegramEnabled,
     notifySignal,
@@ -503,5 +693,9 @@ export default {
     handleStart,
     handlePositions,
     handlePnL,
-    handleHelp
+    handleHelp,
+    handleWallet,
+    handleCreateEvmWallet,
+    handleCreateSolanaWallet,
+    handleToggleMode
 };

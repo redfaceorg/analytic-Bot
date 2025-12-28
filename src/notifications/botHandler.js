@@ -10,7 +10,11 @@ import {
     handleStart,
     handlePositions,
     handlePnL,
-    handleHelp
+    handleHelp,
+    handleWallet,
+    handleCreateEvmWallet,
+    handleCreateSolanaWallet,
+    handleToggleMode
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -175,10 +179,28 @@ async function handleCallback(query) {
             await handleHelp();
             break;
         case 'settings':
-            await handleHelp(); // For now, show help for settings
+            await handleHelp();
             break;
         case 'signals':
-            await handleStart(); // Show status with signals
+            await handleStart();
+            break;
+        // Wallet callbacks
+        case 'wallet':
+        case 'wallet_balance':
+            await handleWallet();
+            break;
+        case 'wallet_create_evm':
+            await handleCreateEvmWallet();
+            break;
+        case 'wallet_create_sol':
+            await handleCreateSolanaWallet();
+            break;
+        case 'wallet_toggle_mode':
+            await handleToggleMode();
+            break;
+        case 'wallet_import':
+            // Show import instructions
+            await handleWallet();
             break;
         default:
             await handleStart();
