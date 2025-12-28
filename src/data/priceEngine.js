@@ -5,7 +5,7 @@
  * Builds candles for strategy analysis
  */
 
-import { getPairByAddress, parsePairData, searchTokens } from './dexscreener.js';
+import { getPairByAddress, parsePairData, searchTokens, getTopPairsByChain } from './dexscreener.js';
 import { logInfo, logError, logDebug } from '../logging/logger.js';
 import config from '../config/index.js';
 
@@ -138,13 +138,22 @@ export function getPriceChange(chainId, pairAddress, periods = 1) {
  */
 export async function findTradablePairs(chainId, query = '') {
     try {
-        const pairs = await searchTokens(query);
+        let pairs;
 
-        // Filter by chain and liquidity
+        if (query) {
+            // If query provided, use search
+            pairs = await searchTokens(query);
+            pairs = pairs.filter(p => p.chainId === chainId);
+        } else {
+            // Use getTopPairsByChain which searches for base tokens
+            pairs = await getTopPairsByChain(chainId);
+        }
+
+        // Filter by liquidity
         return pairs
-            .filter(p => p.chainId === chainId)
             .filter(p => (p.liquidity?.usd || 0) > 1000) // Min $1k liquidity
             .map(p => parsePairData(p))
+            .filter(p => p !== null)
             .slice(0, 20);
     } catch (err) {
         logError(`Failed to search pairs on ${chainId}`, err);
