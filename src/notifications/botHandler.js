@@ -14,7 +14,9 @@ import {
     handleWallet,
     handleCreateEvmWallet,
     handleCreateSolanaWallet,
-    handleToggleMode
+    handleToggleMode,
+    handleBuy,
+    executeConfirmedBuy
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -203,6 +205,32 @@ async function handleCallback(query) {
             await handleWallet();
             break;
         default:
+            // Check for buy callbacks
+            if (action.startsWith('buy_') && !action.startsWith('buy_custom')) {
+                // Parse buy callback: buy_chain_amount_signalId
+                const parts = action.split('_');
+                if (parts.length >= 4) {
+                    const chain = parts[1];
+                    const amount = parts[2];
+                    const signalId = parts.slice(3).join('_');
+                    await handleBuy(chain, amount, signalId);
+                    return;
+                }
+            }
+
+            // Check for confirm buy
+            if (action.startsWith('confirm_buy_')) {
+                // Parse confirm buy: confirm_buy_chain_amount_signalId
+                const parts = action.replace('confirm_buy_', '').split('_');
+                if (parts.length >= 3) {
+                    const chain = parts[0];
+                    const amount = parts[1];
+                    const signalId = parts.slice(2).join('_');
+                    await executeConfirmedBuy(chain, amount, signalId);
+                    return;
+                }
+            }
+
             await handleStart();
     }
 }

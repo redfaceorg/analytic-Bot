@@ -164,10 +164,14 @@ function getSettingsKeyboard() {
 // ==================== NOTIFICATIONS ====================
 
 /**
- * Send signal alert (Maestro-style)
+ * Send signal alert (Maestro-style) with Buy buttons
  */
 export async function notifySignal(signal) {
     const strengthBar = getStrengthBar(signal.strength);
+
+    // Determine native token symbol based on chain
+    const nativeSymbol = signal.chain === 'bsc' ? 'BNB' :
+        signal.chain === 'base' ? 'ETH' : 'SOL';
 
     const message = `
 ${BOT_NAME} <b>Signal Detected</b>
@@ -192,9 +196,32 @@ ${BOT_NAME} <b>Signal Detected</b>
 💧 Liquidity: <code>$${formatNumber(signal.liquidity)}</code>
 
 ━━━━━━━━━━━━━━━━━━━━━
+
+💵 <b>Quick Buy with ${nativeSymbol}:</b>
     `.trim();
 
+    // Store signal data for later use (encode in callback)
+    const signalId = Buffer.from(JSON.stringify({
+        token: signal.token,
+        chain: signal.chain,
+        pair: signal.pairAddress,
+        price: signal.entryPrice
+    })).toString('base64').slice(0, 60);
+
     const keyboard = [
+        // Buy amount buttons
+        [
+            { text: `🟢 0.01 ${nativeSymbol}`, callback_data: `buy_${signal.chain}_0.01_${signalId}` },
+            { text: `🟢 0.05 ${nativeSymbol}`, callback_data: `buy_${signal.chain}_0.05_${signalId}` }
+        ],
+        [
+            { text: `🟢 0.1 ${nativeSymbol}`, callback_data: `buy_${signal.chain}_0.1_${signalId}` },
+            { text: `🟢 0.5 ${nativeSymbol}`, callback_data: `buy_${signal.chain}_0.5_${signalId}` }
+        ],
+        [
+            { text: `💰 1 ${nativeSymbol}`, callback_data: `buy_${signal.chain}_1_${signalId}` },
+            { text: `🔥 Custom Amount`, callback_data: `buy_custom_${signal.chain}_${signalId}` }
+        ],
         [
             { text: '📊 View Chart', url: `https://dexscreener.com/${signal.chain}/${signal.pairAddress}` }
         ],
@@ -681,6 +708,154 @@ ${newMode === 'LIVE' ? '⚠️ <b>WARNING:</b> Real funds will be used!' : '✅ 
     return sendMessage(message, getMainMenuKeyboard());
 }
 
+/**
+ * Handle buy request from signal button
+ * @param {string} chain - Chain (bsc, base, solana)
+ * @param {string} amount - Amount in native token
+ * @param {string} signalData - Base64 encoded signal data
+ */
+export async function handleBuy(chain, amount, signalData) {
+    try {
+        // Decode signal data
+        let signal;
+        try {
+            signal = JSON.parse(Buffer.from(signalData, 'base64').toString());
+        } catch (e) {
+            return sendMessage('❌ Invalid signal data. Please try again with a fresh signal.');
+        }
+
+        const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
+        const amountNum = parseFloat(amount);
+
+        // Check if wallet exists
+        const summary = getWalletSummary();
+        if (chain === 'solana' && !summary.hasSolana) {
+            return sendMessage('❌ No Solana wallet configured. Please create one first.', [
+                [{ text: '💰 Wallet', callback_data: 'wallet' }]
+            ]);
+        }
+        if ((chain === 'bsc' || chain === 'base') && !summary.hasEvm) {
+            return sendMessage('❌ No EVM wallet configured. Please create one first.', [
+                [{ text: '💰 Wallet', callback_data: 'wallet' }]
+            ]);
+        }
+
+        // Show confirmation
+        const confirmMessage = `
+${BOT_NAME} <b>Confirm Trade</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>Token:</b> ${signal.token}
+🔗 <b>Chain:</b> ${chain.toUpperCase()}
+💰 <b>Amount:</b> ${amountNum} ${nativeSymbol}
+📈 <b>Price:</b> $${signal.price?.toFixed(8) || 'Market'}
+
+⚠️ <b>Mode:</b> ${config.mode}
+${config.mode === 'LIVE' ? '🔴 This will use REAL funds!' : '📝 Paper trade only'}
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim();
+
+        const confirmKeyboard = [
+            [
+                { text: '✅ Confirm Buy', callback_data: `confirm_buy_${chain}_${amount}_${signalData}` },
+                { text: '❌ Cancel', callback_data: 'menu' }
+            ]
+        ];
+
+        return sendMessage(confirmMessage, confirmKeyboard);
+    } catch (err) {
+        logError('Buy handler error', err);
+        return sendMessage('❌ Error processing trade request.');
+    }
+}
+
+/**
+ * Execute confirmed buy
+ */
+export async function executeConfirmedBuy(chain, amount, signalData) {
+    try {
+        const signal = JSON.parse(Buffer.from(signalData, 'base64').toString());
+        const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
+        const amountNum = parseFloat(amount);
+
+        // Send "processing" message
+        await sendMessage(`⏳ Processing ${amountNum} ${nativeSymbol} buy for ${signal.token}...`);
+
+        if (config.mode === 'PAPER') {
+            // Paper trade
+            const { executePaperBuy } = await import('../execution/paperTrader.js');
+            const result = await executePaperBuy({
+                ...signal,
+                chain,
+                entryPrice: signal.price
+            }, amountNum * (chain === 'bsc' ? 300 : chain === 'base' ? 2400 : 100)); // Convert to USD
+
+            if (result.success) {
+                const successMsg = `
+${BOT_NAME} <b>Paper Trade Executed!</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ <b>BUY ${signal.token}</b>
+
+💰 Amount: ${amountNum} ${nativeSymbol} (~$${result.result?.amount?.toFixed(2) || (amountNum * 300).toFixed(2)})
+📈 Entry: $${signal.price?.toFixed(8) || 'Market'}
+🎯 Take Profit: Set
+🛑 Stop Loss: Set
+
+<i>Position is being monitored...</i>
+
+━━━━━━━━━━━━━━━━━━━━━
+                `.trim();
+                return sendMessage(successMsg, getMainMenuKeyboard());
+            } else {
+                return sendMessage(`❌ Paper trade failed: ${result.error}`);
+            }
+        } else {
+            // LIVE trade
+            const { executeLiveBuy, isLiveEnabled } = await import('../execution/evmExecutor.js');
+
+            if (!isLiveEnabled()) {
+                return sendMessage('❌ Live trading is not enabled. Please enable it in settings.');
+            }
+
+            if (chain === 'solana') {
+                return sendMessage('❌ Solana live trading not yet implemented. Use BSC or Base.');
+            }
+
+            const result = await executeLiveBuy({
+                ...signal,
+                chain,
+                entryPrice: signal.price,
+                pairAddress: signal.pair
+            }, amountNum);
+
+            if (result.success) {
+                const successMsg = `
+${BOT_NAME} <b>🔴 LIVE Trade Executed!</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ <b>BUY ${signal.token}</b>
+
+💰 Amount: ${amountNum} ${nativeSymbol}
+📈 Entry: $${signal.price?.toFixed(8) || 'Market'}
+🔗 TX: <code>${result.txHash?.slice(0, 20)}...</code>
+
+<i>Position is being monitored...</i>
+
+━━━━━━━━━━━━━━━━━━━━━
+                `.trim();
+                return sendMessage(successMsg, getMainMenuKeyboard());
+            } else {
+                return sendMessage(`❌ Trade failed: ${result.error}`);
+            }
+        }
+    } catch (err) {
+        logError('Execute buy error', err);
+        return sendMessage('❌ Trade execution error. Check logs.');
+    }
+}
+
 export default {
     isTelegramEnabled,
     notifySignal,
@@ -697,5 +872,7 @@ export default {
     handleWallet,
     handleCreateEvmWallet,
     handleCreateSolanaWallet,
-    handleToggleMode
+    handleToggleMode,
+    handleBuy,
+    executeConfirmedBuy
 };
