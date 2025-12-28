@@ -2,6 +2,7 @@
  * RedFace Trading Bot - Telegram Bot Handler
  * 
  * Listens for commands and responds with Maestro-style UI
+ * Multi-user: Accepts all users
  */
 
 import { logInfo, logError } from '../logging/logger.js';
@@ -16,7 +17,8 @@ import {
     handleCreateSolanaWallet,
     handleToggleMode,
     handleBuy,
-    executeConfirmedBuy
+    executeConfirmedBuy,
+    setCurrentUser
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -93,25 +95,21 @@ async function getUpdates() {
 }
 
 /**
- * Handle incoming update
+ * Handle incoming update (multi-user: accepts all users)
  */
 async function handleUpdate(update) {
     // Handle message
     if (update.message) {
         const message = update.message;
         const chatId = message.chat.id.toString();
-
-        // Only respond to authorized chat
-        if (chatId !== CHAT_ID) {
-            logInfo(`Unauthorized message from chat ${chatId}`);
-            return;
-        }
+        const username = message.from?.username || message.from?.first_name || 'Unknown';
 
         const text = message.text || '';
 
         // Handle commands
         if (text.startsWith('/')) {
-            await handleCommand(text.toLowerCase());
+            logInfo(`Command from ${username} (${chatId}): ${text}`);
+            await handleCommand(text.toLowerCase(), chatId, username);
         }
     }
 
@@ -119,18 +117,19 @@ async function handleUpdate(update) {
     if (update.callback_query) {
         const query = update.callback_query;
         const chatId = query.message?.chat.id.toString();
+        const username = query.from?.username || query.from?.first_name || 'Unknown';
 
-        if (chatId !== CHAT_ID) return;
-
-        await handleCallback(query);
+        logInfo(`Callback from ${username} (${chatId}): ${query.data}`);
+        await handleCallback(query, chatId, username);
     }
 }
 
 /**
- * Handle text commands
+ * Handle text commands (multi-user)
  */
-async function handleCommand(command) {
-    logInfo(`Telegram command: ${command}`);
+async function handleCommand(command, chatId, username) {
+    // Set current user for response routing
+    setCurrentUser(chatId);
 
     switch (command) {
         case '/start':
@@ -146,6 +145,9 @@ async function handleCommand(command) {
         case '/pnl':
             await handlePnL();
             break;
+        case '/wallet':
+            await handleWallet();
+            break;
         case '/help':
             await handleHelp();
             break;
@@ -155,11 +157,13 @@ async function handleCommand(command) {
 }
 
 /**
- * Handle callback queries (inline button clicks)
+ * Handle callback queries (inline button clicks) - multi-user
  */
-async function handleCallback(query) {
+async function handleCallback(query, chatId, username) {
     const action = query.data;
-    logInfo(`Telegram callback: ${action}`);
+
+    // Set current user for response routing
+    setCurrentUser(chatId);
 
     // Answer callback to remove loading state
     await answerCallback(query.id);

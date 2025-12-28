@@ -24,19 +24,33 @@ const BOT_VERSION = '1.0.0';
 
 // Check if Telegram is configured
 export function isTelegramEnabled() {
-    return !!(BOT_TOKEN && CHAT_ID);
+    return !!(BOT_TOKEN);  // Allow bot to work without CHAT_ID for multi-user
 }
+
+// Store current user context for handlers (multi-user support)
+let currentUserChatId = null;
 
 /**
  * Send message with optional inline keyboard
+ * @param {string} text - Message text
+ * @param {Array} keyboard - Optional inline keyboard
+ * @param {string} parseMode - Parse mode (HTML or Markdown)
+ * @param {string} targetChatId - Target chat ID (for multi-user, defaults to current user)
  */
-async function sendMessage(text, keyboard = null, parseMode = 'HTML') {
+async function sendMessage(text, keyboard = null, parseMode = 'HTML', targetChatId = null) {
     if (!isTelegramEnabled()) return false;
 
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
 
+    // Priority: explicit targetChatId > currentUserChatId > env CHAT_ID
+    const chatId = targetChatId || currentUserChatId || CHAT_ID;
+    if (!chatId) {
+        logError('No chat ID available for sending message');
+        return false;
+    }
+
     const body = {
-        chat_id: CHAT_ID,
+        chat_id: chatId,
         text,
         parse_mode: parseMode,
         disable_web_page_preview: true
@@ -63,6 +77,27 @@ async function sendMessage(text, keyboard = null, parseMode = 'HTML') {
         logError('Telegram error', err);
         return false;
     }
+}
+
+/**
+ * Set current user context for handlers
+ */
+export function setCurrentUser(chatId) {
+    currentUserChatId = chatId;
+}
+
+/**
+ * Get current user chat ID
+ */
+export function getCurrentUserChatId() {
+    return currentUserChatId || CHAT_ID;
+}
+
+/**
+ * Send message to current user
+ */
+async function sendToCurrentUser(text, keyboard = null) {
+    return sendMessage(text, keyboard, 'HTML', getCurrentUserChatId());
 }
 
 /**
