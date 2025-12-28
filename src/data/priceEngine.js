@@ -5,7 +5,7 @@
  * Builds candles for strategy analysis
  */
 
-import { getPairByAddress, parsePairData, searchTokens, getTopPairsByChain } from './dexscreener.js';
+import { getPairByAddress, parsePairData, searchTokens, getTopPairsByChain, getNewPairs, getBoostedTokens, getTopGainers } from './dexscreener.js';
 import { logInfo, logError, logDebug } from '../logging/logger.js';
 import config from '../config/index.js';
 
@@ -135,26 +135,67 @@ export function getPriceChange(chainId, pairAddress, periods = 1) {
 
 /**
  * Search for tradeable pairs on a chain
+ * Combines multiple sources for maximum coverage (100+ tokens)
  */
 export async function findTradablePairs(chainId, query = '') {
     try {
-        let pairs;
+        let allPairs = [];
 
         if (query) {
             // If query provided, use search
-            pairs = await searchTokens(query);
-            pairs = pairs.filter(p => p.chainId === chainId);
+            const searchResults = await searchTokens(query);
+            allPairs = searchResults.filter(p => p.chainId === chainId);
         } else {
-            // Use getTopPairsByChain which searches for base tokens
-            pairs = await getTopPairsByChain(chainId);
+            // Combine multiple sources for comprehensive coverage
+            logInfo(`Scanning ${chainId.toUpperCase()} for gems...`);
+
+            // 1. Top pairs by chain (established tokens)
+            const topPairs = await getTopPairsByChain(chainId);
+            allPairs.push(...topPairs);
+
+            // 2. New pairs / fresh launches (micro caps)
+            try {
+                const newPairs = await getNewPairs(chainId);
+                allPairs.push(...newPairs);
+                logDebug(`Found ${newPairs.length} new pairs on ${chainId}`);
+            } catch (e) { /* continue */ }
+
+            // 3. Boosted/trending tokens
+            try {
+                const boosted = await getBoostedTokens(chainId);
+                allPairs.push(...boosted);
+                logDebug(`Found ${boosted.length} boosted tokens on ${chainId}`);
+            } catch (e) { /* continue */ }
+
+            // 4. Top gainers (momentum plays)
+            try {
+                const gainers = await getTopGainers(chainId);
+                allPairs.push(...gainers);
+                logDebug(`Found ${gainers.length} top gainers on ${chainId}`);
+            } catch (e) { /* continue */ }
         }
 
-        // Filter by liquidity
-        return pairs
-            .filter(p => (p.liquidity?.usd || 0) > 1000) // Min $1k liquidity
+        // Deduplicate by pair address
+        const seen = new Set();
+        const uniquePairs = allPairs.filter(p => {
+            const key = p.pairAddress || p.address;
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        // Filter by liquidity (lower threshold for micro caps: $500)
+        const MIN_LIQUIDITY = 500; // Changed from $1000 to $500 for micro caps
+
+        const filtered = uniquePairs
+            .filter(p => (p.liquidity?.usd || 0) >= MIN_LIQUIDITY)
             .map(p => parsePairData(p))
-            .filter(p => p !== null)
-            .slice(0, 20);
+            .filter(p => p !== null);
+
+        logInfo(`Found ${filtered.length} tradable pairs on ${chainId}`);
+
+        // Return up to 50 pairs per chain (100+ total across chains)
+        return filtered.slice(0, 50);
     } catch (err) {
         logError(`Failed to search pairs on ${chainId}`, err);
         return [];

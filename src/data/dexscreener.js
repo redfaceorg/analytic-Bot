@@ -130,23 +130,92 @@ export async function getPairByAddress(chainId, pairAddress) {
 }
 
 /**
- * Get new pairs on a chain (24h activity)
+ * Get new pairs on a chain (latest launches - micro caps)
  * Great for finding degen opportunities
  * @param {string} chainId - Chain ID
  * @returns {Promise<Array>} New pairs
  */
 export async function getNewPairs(chainId) {
-    // DexScreener profiles endpoint shows trending/new tokens
+    // DexScreener token profiles endpoint - shows recently updated/new tokens
     const url = `https://api.dexscreener.com/token-profiles/latest/v1`;
 
     try {
         const data = await fetchWithRateLimit(url);
-        // Filter by chain
-        return data.filter(p => p.chainId === chainId).slice(0, 50);
+        // Filter by chain and return more results
+        const filtered = (data || [])
+            .filter(p => p.chainId === chainId)
+            .slice(0, 100);
+
+        // Get pair data for these tokens
+        const pairs = [];
+        for (const token of filtered.slice(0, 20)) {
+            try {
+                const tokenPairs = await getTokenPairs(chainId, token.tokenAddress);
+                pairs.push(...tokenPairs.slice(0, 2));
+            } catch (e) {
+                // Continue on error
+            }
+        }
+        return pairs;
     } catch (err) {
-        // Fallback: return empty array
         return [];
     }
+}
+
+/**
+ * Get boosted/trending tokens (promoted tokens with activity)
+ * @param {string} chainId - Chain ID
+ * @returns {Promise<Array>} Boosted tokens
+ */
+export async function getBoostedTokens(chainId) {
+    const url = `https://api.dexscreener.com/token-boosts/latest/v1`;
+
+    try {
+        const data = await fetchWithRateLimit(url);
+        const filtered = (data || [])
+            .filter(p => p.chainId === chainId)
+            .slice(0, 50);
+
+        // Get pair data for boosted tokens
+        const pairs = [];
+        for (const token of filtered.slice(0, 15)) {
+            try {
+                const tokenPairs = await getTokenPairs(chainId, token.tokenAddress);
+                pairs.push(...tokenPairs.slice(0, 2));
+            } catch (e) {
+                // Continue on error
+            }
+        }
+        return pairs;
+    } catch (err) {
+        return [];
+    }
+}
+
+/**
+ * Get top gainers on a chain
+ * @param {string} chainId - Chain ID
+ * @returns {Promise<Array>} Top gaining pairs
+ */
+export async function getTopGainers(chainId) {
+    // Search for tokens with high price change
+    const searches = ['pump', 'moon', 'gem', '100x', 'degen'];
+    const pairs = [];
+
+    for (const query of searches) {
+        try {
+            const results = await searchTokens(`${query} ${chainId}`);
+            const chainPairs = results
+                .filter(p => p.chainId === chainId)
+                .filter(p => (p.priceChange?.h1 || 0) > 10) // 10%+ gain in 1h
+                .slice(0, 10);
+            pairs.push(...chainPairs);
+        } catch (e) {
+            // Continue on error
+        }
+    }
+
+    return pairs;
 }
 
 /**
@@ -248,6 +317,8 @@ export default {
     getTopPairsByChain,
     getPairByAddress,
     getNewPairs,
+    getBoostedTokens,
+    getTopGainers,
     parsePairData,
     fetchMultiplePairs
 };
