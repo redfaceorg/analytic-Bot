@@ -154,16 +154,20 @@ export function getProfitFactor() {
  */
 export function getPnLSummary() {
     return {
-        totalPnL: pnlData.totalPnL,
-        totalTrades: pnlData.totalTrades,
-        winningTrades: pnlData.winningTrades,
-        losingTrades: pnlData.losingTrades,
-        winRate: getWinRate().toFixed(1) + '%',
-        profitFactor: getProfitFactor().toFixed(2),
-        biggestWin: pnlData.biggestWin,
-        biggestLoss: pnlData.biggestLoss,
-        avgWin: pnlData.avgWin,
-        avgLoss: pnlData.avgLoss
+        totalPnL: pnlData.totalPnL || 0,
+        totalTrades: pnlData.totalTrades || 0,
+        wins: pnlData.winningTrades || 0,
+        losses: pnlData.losingTrades || 0,
+        winningTrades: pnlData.winningTrades || 0,
+        losingTrades: pnlData.losingTrades || 0,
+        winRate: getWinRate() || 0,  // Return number, not string
+        profitFactor: getProfitFactor() || 0,  // Return number, not string
+        biggestWin: pnlData.biggestWin || 0,
+        biggestLoss: Math.abs(pnlData.biggestLoss) || 0,
+        avgWin: pnlData.avgWin || 0,
+        avgLoss: pnlData.avgLoss || 0,
+        todayPnl: pnlData.dailyPnL[new Date().toISOString().split('T')[0]] || 0,
+        todayTrades: pnlData.trades.filter(t => t.date === new Date().toISOString().split('T')[0]).length
     };
 }
 
@@ -207,8 +211,8 @@ export function displayPnLReport() {
     console.log('╠════════════════════════════════════════════════════════╣');
     console.log(`║  Total PnL:       ${(summary.totalPnL >= 0 ? '+' : '') + '$' + summary.totalPnL.toFixed(2).padEnd(35)}║`);
     console.log(`║  Total Trades:    ${String(summary.totalTrades).padEnd(36)}║`);
-    console.log(`║  Win Rate:        ${summary.winRate.padEnd(36)}║`);
-    console.log(`║  Profit Factor:   ${summary.profitFactor.padEnd(36)}║`);
+    console.log(`║  Win Rate:        ${(summary.winRate.toFixed(1) + '%').padEnd(36)}║`);
+    console.log(`║  Profit Factor:   ${summary.profitFactor.toFixed(2).padEnd(36)}║`);
     console.log('╠════════════════════════════════════════════════════════╣');
     console.log(`║  Winning Trades:  ${String(summary.winningTrades).padEnd(36)}║`);
     console.log(`║  Losing Trades:   ${String(summary.losingTrades).padEnd(36)}║`);
