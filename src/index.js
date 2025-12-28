@@ -14,6 +14,7 @@ import config from './config/index.js';
 import { displayBanner, promptProfitMultiplier, confirmStart, displayKillSwitch } from './utils/prompt.js';
 import { start, stop, getStatus } from './automation/scheduler.js';
 import { logInfo, logError } from './logging/logger.js';
+import { startTelegramBot, stopTelegramBot } from './notifications/botHandler.js';
 import http from 'http';
 
 // Health check server for cloud deployments (Koyeb, etc.)
@@ -81,6 +82,9 @@ async function main() {
     // Start the bot
     try {
         await start();
+
+        // Start Telegram bot
+        startTelegramBot();
 
         // Display initial status
         setTimeout(() => {
