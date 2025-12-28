@@ -1,0 +1,42 @@
+# Koyeb Deployment Configuration
+# Deploy via: https://app.koyeb.com -> Create Web Service -> GitHub
+
+name: dex-trading-bot
+type: worker
+
+# Build settings
+build:
+  dockerfile:
+    path: Dockerfile
+
+# Environment variables
+env:
+  - key: MODE
+    value: PAPER
+  - key: PROFIT_MULTIPLIER
+    value: "5"
+  - key: ENABLE_BSC
+    value: "true"
+  - key: ENABLE_BASE
+    value: "true"
+  - key: ENABLE_SOLANA
+    value: "true"
+  - key: MAX_TRADES_PER_DAY
+    value: "15"
+  - key: RISK_PER_TRADE
+    value: "5"
+  - key: MAX_DAILY_DRAWDOWN
+    value: "15"
+  - key: STOP_LOSS_PERCENT
+    value: "5"
+  - key: ENABLE_LIVE_TRADING
+    value: "false"
+  - key: NODE_ENV
+    value: production
+
+# Instance settings
+instance_type: nano
+regions:
+  - was  # Washington DC
+min_scale: 1
+max_scale: 1
