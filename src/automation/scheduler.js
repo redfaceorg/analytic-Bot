@@ -18,6 +18,7 @@ import { loadState, saveState, getBalance, getOpenPositions, getWatchlist, addTo
 import { executePaperBuy, executePaperSell } from '../execution/paperTrader.js';
 import { executeLiveBuy, executeLiveSell, isLiveEnabled } from '../execution/evmExecutor.js';
 import { recordPnL, displayPnLReport } from '../logging/pnlTracker.js';
+import { isTelegramEnabled, notifySignal, notifyExit, notifyStartup } from '../notifications/telegram.js';
 
 // Main loop interval (30 seconds)
 const MAIN_LOOP_INTERVAL = 30000;
@@ -127,6 +128,9 @@ async function mainLoopIteration() {
             if (signal) {
                 logInfo(`🎯 Signal detected: ${signal.token} on ${signal.chain.toUpperCase()}`);
 
+                // Send Telegram notification
+                notifySignal(signal).catch(() => { });
+
                 // Validate signal with risk manager
                 const balance = getBalance(signal.chain);
                 const validation = validateSignal(signal, balance);
@@ -217,6 +221,17 @@ async function positionLoopIteration() {
                         pnlPercent: result.result.pnlPercent,
                         reason: exitSignal.reason
                     });
+
+                    // Send Telegram notification
+                    notifyExit({
+                        token: position.token,
+                        chain: position.chain,
+                        reason: exitSignal.reason,
+                        entryPrice: position.entryPrice,
+                        exitPrice: result.result.executionPrice,
+                        pnl: result.result.pnl,
+                        pnlPercent: result.result.pnlPercent
+                    }).catch(() => { });
                 }
             }
         } catch (err) {
