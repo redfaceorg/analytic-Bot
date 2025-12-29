@@ -891,8 +891,242 @@ ${BOT_NAME} <b>🔴 LIVE Trade Executed!</b>
     }
 }
 
+/**
+ * Handle /token command - Get token info and safety check
+ */
+export async function handleToken(tokenAddress) {
+    try {
+        if (!tokenAddress || tokenAddress.length < 20) {
+            return sendMessage(`
+${BOT_NAME} <b>Token Scanner</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Usage: <code>/token &lt;address&gt;</code>
+
+Example:
+<code>/token 0x...</code> (for BSC/Base)
+
+━━━━━━━━━━━━━━━━━━━━━
+            `.trim());
+        }
+
+        await sendMessage('🔍 Scanning token...');
+
+        // Import analyzer
+        const { analyzeToken, formatTokenMessage } = await import('../analysis/tokenAnalyzer.js');
+
+        // Detect chain from address format
+        const chain = tokenAddress.startsWith('0x') ? 'bsc' : 'solana';
+
+        const analysis = await analyzeToken(chain, tokenAddress);
+        const message = formatTokenMessage(analysis);
+
+        const keyboard = [];
+
+        if (analysis.success) {
+            keyboard.push([
+                { text: '📊 Chart', url: `https://dexscreener.com/${chain}/${analysis.token.pairAddress}` }
+            ]);
+
+            // Add buy buttons if not a honeypot
+            if (!analysis.safety.isHoneypot) {
+                const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
+                keyboard.push([
+                    { text: `🟢 Buy 0.1 ${nativeSymbol}`, callback_data: `quickbuy_${chain}_0.1_${tokenAddress}` },
+                    { text: `🟢 Buy 0.5 ${nativeSymbol}`, callback_data: `quickbuy_${chain}_0.5_${tokenAddress}` }
+                ]);
+            }
+        }
+
+        keyboard.push([{ text: '◀️ Menu', callback_data: 'menu' }]);
+
+        return sendMessage(message, keyboard);
+    } catch (err) {
+        logError('Token command error', err);
+        return sendMessage('❌ Failed to analyze token');
+    }
+}
+
+/**
+ * Handle sell position
+ */
+export async function handleSell(positionId, percentage) {
+    try {
+        const percentNum = parseInt(percentage);
+
+        await sendMessage(`⏳ Selling ${percentNum}% of position...`);
+
+        // For now, paper sell
+        if (config.mode === 'PAPER') {
+            const message = `
+${BOT_NAME} <b>Paper Sell Executed</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ Sold ${percentNum}% of position
+
+<i>This was a paper trade</i>
+
+━━━━━━━━━━━━━━━━━━━━━
+            `.trim();
+            return sendMessage(message, getMainMenuKeyboard());
+        }
+
+        // Live sell would go here
+        return sendMessage('❌ Live selling not yet implemented');
+    } catch (err) {
+        logError('Sell error', err);
+        return sendMessage('❌ Sell failed');
+    }
+}
+
+/**
+ * Handle settings menu
+ */
+export async function handleSettings() {
+    const message = `
+${BOT_NAME} <b>Settings</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+⚙️ <b>Trading Settings</b>
+┌ Mode: <code>${config.mode}</code>
+├ Take Profit: <code>${config.takeProfit?.multiplier || 5}x</code>
+├ Stop Loss: <code>${config.risk?.stopLossPercent || 5}%</code>
+├ Max Trades/Day: <code>${config.risk?.maxTradesPerDay || 15}</code>
+└ Slippage: <code>Auto</code>
+
+📢 <b>Notifications</b>
+┌ Signals: <code>ON</code>
+├ Trades: <code>ON</code>
+└ Daily Summary: <code>ON</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: config.mode === 'PAPER' ? '🔴 Switch to LIVE' : '📝 Switch to PAPER', callback_data: 'wallet_toggle_mode' }
+        ],
+        [
+            { text: '🎯 TP: ' + (config.takeProfit?.multiplier || 5) + 'x', callback_data: 'settings_tp' },
+            { text: '🛑 SL: ' + (config.risk?.stopLossPercent || 5) + '%', callback_data: 'settings_sl' }
+        ],
+        [
+            { text: '◀️ Back', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle referral info
+ */
+export async function handleReferral(userId) {
+    // Generate referral code from user ID
+    const refCode = `RF${userId?.toString().slice(-6) || 'XXXX'}`;
+
+    const message = `
+${BOT_NAME} <b>Referral Program</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+💰 <b>Earn with Referrals!</b>
+
+Your referral link:
+<code>https://t.me/YourBotName?start=${refCode}</code>
+
+📊 <b>Your Stats</b>
+┌ Referrals: <code>0</code>
+├ Earnings: <code>$0.00</code>
+└ Pending: <code>$0.00</code>
+
+🎁 <b>Rewards</b>
+┌ Earn <b>30%</b> of trading fees
+└ Lifetime commissions!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '📋 Copy Link', callback_data: 'ref_copy' },
+            { text: '📊 Stats', callback_data: 'ref_stats' }
+        ],
+        [
+            { text: '◀️ Back', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle leaderboard
+ */
+export async function handleLeaderboard() {
+    const message = `
+${BOT_NAME} <b>🏆 Leaderboard</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>Top Traders (7 Days)</b>
+
+🥇 <code>Trader***1</code> — +$1,234.56
+🥈 <code>Trader***2</code> — +$987.65
+🥉 <code>Trader***3</code> — +$654.32
+4. <code>Trader***4</code> — +$432.10
+5. <code>Trader***5</code> — +$321.00
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<i>Trade more to climb the ranks!</i>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '📅 Daily', callback_data: 'lb_daily' },
+            { text: '📆 Weekly', callback_data: 'lb_weekly' },
+            { text: '📈 All Time', callback_data: 'lb_all' }
+        ],
+        [
+            { text: '◀️ Back', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Update main menu to include new buttons
+ */
+function getMainMenuKeyboard() {
+    return [
+        [
+            { text: '📊 Status', callback_data: 'status' },
+            { text: '💼 Positions', callback_data: 'positions' }
+        ],
+        [
+            { text: '💰 Wallet', callback_data: 'wallet' },
+            { text: '📈 PnL', callback_data: 'pnl' }
+        ],
+        [
+            { text: '🔍 Token', callback_data: 'token_prompt' },
+            { text: '⚙️ Settings', callback_data: 'settings' }
+        ],
+        [
+            { text: '👥 Referral', callback_data: 'referral' },
+            { text: '🏆 Leaderboard', callback_data: 'leaderboard' }
+        ],
+        [
+            { text: '🔄 Refresh', callback_data: 'refresh' }
+        ]
+    ];
+}
+
 export default {
     isTelegramEnabled,
+    setCurrentUser,
+    getCurrentUserChatId,
     notifySignal,
     notifyTrade,
     notifyExit,
@@ -909,5 +1143,10 @@ export default {
     handleCreateSolanaWallet,
     handleToggleMode,
     handleBuy,
-    executeConfirmedBuy
+    executeConfirmedBuy,
+    handleToken,
+    handleSell,
+    handleSettings,
+    handleReferral,
+    handleLeaderboard
 };

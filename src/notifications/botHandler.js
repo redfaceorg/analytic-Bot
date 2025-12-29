@@ -18,7 +18,12 @@ import {
     handleToggleMode,
     handleBuy,
     executeConfirmedBuy,
-    setCurrentUser
+    setCurrentUser,
+    handleToken,
+    handleSell,
+    handleSettings,
+    handleReferral,
+    handleLeaderboard
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -131,6 +136,13 @@ async function handleCommand(command, chatId, username) {
     // Set current user for response routing
     setCurrentUser(chatId);
 
+    // Handle /token <address> command
+    if (command.startsWith('/token ')) {
+        const address = command.replace('/token ', '').trim();
+        await handleToken(address);
+        return;
+    }
+
     switch (command) {
         case '/start':
         case '/menu':
@@ -147,6 +159,18 @@ async function handleCommand(command, chatId, username) {
             break;
         case '/wallet':
             await handleWallet();
+            break;
+        case '/settings':
+            await handleSettings();
+            break;
+        case '/referral':
+            await handleReferral(chatId);
+            break;
+        case '/leaderboard':
+            await handleLeaderboard();
+            break;
+        case '/token':
+            await handleToken(''); // Show usage
             break;
         case '/help':
             await handleHelp();
@@ -185,10 +209,23 @@ async function handleCallback(query, chatId, username) {
             await handleHelp();
             break;
         case 'settings':
-            await handleHelp();
+            await handleSettings();
             break;
         case 'signals':
             await handleStart();
+            break;
+        // New feature callbacks
+        case 'token_prompt':
+            await handleToken('');
+            break;
+        case 'referral':
+            await handleReferral(chatId);
+            break;
+        case 'leaderboard':
+        case 'lb_daily':
+        case 'lb_weekly':
+        case 'lb_all':
+            await handleLeaderboard();
             break;
         // Wallet callbacks
         case 'wallet':
