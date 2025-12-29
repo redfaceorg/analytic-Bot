@@ -454,7 +454,7 @@ export async function handleStart() {
 }
 
 /**
- * Handle /positions command
+ * Handle /positions command with sell buttons
  */
 export async function handlePositions() {
     const positions = getOpenPositions();
@@ -472,12 +472,24 @@ ${BOT_NAME} <b>Open Positions</b>
     }
 
     let positionsList = '';
+    const sellButtons = [];
+
     positions.forEach((p, i) => {
+        const currentPnl = ((p.currentPrice || p.entryPrice) - p.entryPrice) / p.entryPrice * 100;
+        const pnlEmoji = currentPnl >= 0 ? '🟢' : '🔴';
+
         positionsList += `
 ${i + 1}. <b>${p.token}</b> (${p.chain.toUpperCase()})
    Entry: <code>$${p.entryPrice.toFixed(8)}</code>
    Size: <code>$${p.positionSizeUsd.toFixed(2)}</code>
+   ${pnlEmoji} PnL: <code>${currentPnl >= 0 ? '+' : ''}${currentPnl.toFixed(2)}%</code>
 `;
+        // Add sell buttons for this position
+        sellButtons.push([
+            { text: `🔴 Sell 25% #${i + 1}`, callback_data: `sell_${i}_25` },
+            { text: `🔴 Sell 50% #${i + 1}`, callback_data: `sell_${i}_50` },
+            { text: `🔴 Sell 100% #${i + 1}`, callback_data: `sell_${i}_100` }
+        ]);
     });
 
     const message = `
@@ -486,10 +498,23 @@ ${BOT_NAME} <b>Open Positions</b>
 
 📊 <b>${positions.length} Position(s)</b>
 ${positionsList}
+<i>Click to sell:</i>
+
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
 
-    return sendMessage(message, getPositionsKeyboard());
+    // Build keyboard with sell buttons + navigation
+    const keyboard = [
+        ...sellButtons,
+        [
+            { text: '🔴 Close All', callback_data: 'positions_close_all' }
+        ],
+        [
+            { text: '◀️ Back', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard);
 }
 
 /**

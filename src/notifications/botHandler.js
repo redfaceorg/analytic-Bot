@@ -272,6 +272,36 @@ async function handleCallback(query, chatId, username) {
                 }
             }
 
+            // Check for sell callbacks (sell_positionIndex_percentage)
+            if (action.startsWith('sell_')) {
+                const parts = action.split('_');
+                if (parts.length >= 3) {
+                    const positionIndex = parts[1];
+                    const percentage = parts[2];
+                    await handleSell(positionIndex, percentage);
+                    return;
+                }
+            }
+
+            // Check for quickbuy from token scanner
+            if (action.startsWith('quickbuy_')) {
+                const parts = action.split('_');
+                if (parts.length >= 4) {
+                    const chain = parts[1];
+                    const amount = parts[2];
+                    const tokenAddress = parts[3];
+                    // Use token address as signal data
+                    const signalData = Buffer.from(JSON.stringify({
+                        token: 'Token',
+                        chain,
+                        pair: tokenAddress,
+                        price: 0
+                    })).toString('base64');
+                    await handleBuy(chain, amount, signalData);
+                    return;
+                }
+            }
+
             await handleStart();
     }
 }
