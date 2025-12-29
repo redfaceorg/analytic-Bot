@@ -11,7 +11,16 @@ import { logInfo, logError } from '../logging/logger.js';
 import { getStatus } from '../automation/scheduler.js';
 import { getBalance, getOpenPositions } from '../automation/state.js';
 import { getPnLSummary } from '../logging/pnlTracker.js';
-import { getWalletSummary, getAllBalances, createEvmWallet, createSolanaWallet, hasEvmWallet, hasSolanaWallet } from '../wallet/walletManager.js';
+import {
+    getOrCreateUser,
+    getWalletSummary,
+    createEvmWallet,
+    createSolanaWallet,
+    toggleTradingMode,
+    getUserMode,
+    getUserWallet,
+    getWalletForTrading
+} from '../wallet/userWalletManager.js';
 import config from '../config/index.js';
 
 // Telegram config
@@ -614,11 +623,19 @@ function getWalletKeyboard(hasEvm, hasSol) {
 }
 
 /**
- * Handle /wallet command
+ * Handle /wallet command - Per user
  */
 export async function handleWallet() {
-    const summary = getWalletSummary();
-    const balances = await getAllBalances();
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    // Register/update user
+    await getOrCreateUser(telegramId);
+
+    const summary = await getWalletSummary(telegramId);
+    const mode = await getUserMode(telegramId);
 
     let walletList = '';
 
@@ -626,8 +643,6 @@ export async function handleWallet() {
         walletList += `
 🔷 <b>EVM (BSC/Base)</b>
 Address: <code>${summary.evmAddress}</code>
-BSC: <code>${balances.bsc.native.toFixed(4)} ${balances.bsc.symbol || 'BNB'}</code> (~$${balances.bsc.usd.toFixed(2)})
-Base: <code>${balances.base.native.toFixed(4)} ${balances.base.symbol || 'ETH'}</code> (~$${balances.base.usd.toFixed(2)})
 `;
     }
 
@@ -635,7 +650,6 @@ Base: <code>${balances.base.native.toFixed(4)} ${balances.base.symbol || 'ETH'}<
         walletList += `
 🟣 <b>Solana</b>
 Address: <code>${summary.solanaAddress}</code>
-Balance: <code>${balances.solana.native.toFixed(4)} SOL</code> (~$${balances.solana.usd.toFixed(2)})
 `;
     }
 
@@ -646,15 +660,14 @@ Create or import a wallet to enable live trading.
 `;
     }
 
-    const modeEmoji = config.mode === 'LIVE' ? '🔴' : '📝';
+    const modeEmoji = mode === 'LIVE' ? '🔴' : '📝';
 
     const message = `
 ${BOT_NAME} <b>Wallet</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-${modeEmoji} <b>Mode:</b> ${config.mode}
+${modeEmoji} <b>Mode:</b> ${mode}
 ${walletList}
-💵 <b>Total:</b> ~$${balances.totalUsd.toFixed(2)}
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
@@ -663,12 +676,20 @@ ${walletList}
 }
 
 /**
- * Handle wallet creation
+ * Handle EVM wallet creation - Per user
  */
 export async function handleCreateEvmWallet() {
-    const result = createEvmWallet();
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const result = await createEvmWallet(telegramId);
 
     if (!result.success) {
+        if (result.wallet) {
+            return sendMessage(`⚠️ You already have an EVM wallet:\n<code>${result.wallet.address}</code>`);
+        }
         return sendMessage(`❌ Failed to create wallet: ${result.error}`);
     }
 
@@ -681,27 +702,35 @@ ${BOT_NAME} <b>New EVM Wallet Created</b>
 📍 <b>Address:</b>
 <code>${result.address}</code>
 
-🔐 <b>Private Key:</b>
-<code>${result.privateKey}</code>
+🔐 <b>Private Key:</b> Stored securely (encrypted)
 
 ⚠️ <b>IMPORTANT:</b>
-• Save this private key securely
-• Never share it with anyone
-• Fund this wallet before trading
+• Fund this wallet to start trading
+• Your key is encrypted in database
+• Deposit BNB (BSC) or ETH (Base)
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
 
-    return sendMessage(message, getWalletKeyboard(true, hasSolanaWallet()));
+    const summary = await getWalletSummary(telegramId);
+    return sendMessage(message, getWalletKeyboard(summary.hasEvm, summary.hasSolana));
 }
 
 /**
- * Handle Solana wallet creation
+ * Handle Solana wallet creation - Per user
  */
 export async function handleCreateSolanaWallet() {
-    const result = await createSolanaWallet();
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const result = await createSolanaWallet(telegramId);
 
     if (!result.success) {
+        if (result.wallet) {
+            return sendMessage(`⚠️ You already have a Solana wallet:\n<code>${result.wallet.address}</code>`);
+        }
         return sendMessage(`❌ Failed to create wallet: ${result.error}`);
     }
 
@@ -714,29 +743,34 @@ ${BOT_NAME} <b>New Solana Wallet Created</b>
 📍 <b>Address:</b>
 <code>${result.address}</code>
 
-🔐 <b>Private Key:</b>
-<code>${result.privateKey}</code>
+🔐 <b>Private Key:</b> Stored securely (encrypted)
 
 ⚠️ <b>IMPORTANT:</b>
-• Save this private key securely
-• Never share it with anyone
-• Fund this wallet before trading
+• Fund this wallet to start trading
+• Your key is encrypted in database
+• Deposit SOL to start
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
 
-    return sendMessage(message, getWalletKeyboard(hasEvmWallet(), true));
+    const summary = await getWalletSummary(telegramId);
+    return sendMessage(message, getWalletKeyboard(summary.hasEvm, summary.hasSolana));
 }
 
 /**
- * Handle mode toggle
+ * Handle mode toggle - Per user
  */
 export async function handleToggleMode() {
-    const currentMode = config.mode;
-    const newMode = currentMode === 'PAPER' ? 'LIVE' : 'PAPER';
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const summary = await getWalletSummary(telegramId);
 
     // Check if wallets exist for live mode
-    if (newMode === 'LIVE' && !hasEvmWallet() && !hasSolanaWallet()) {
+    const currentMode = await getUserMode(telegramId);
+    if (currentMode === 'PAPER' && !summary.hasEvm && !summary.hasSolana) {
         const message = `
 ${BOT_NAME} <b>Cannot Switch to LIVE</b>
 ━━━━━━━━━━━━━━━━━━━━━
@@ -751,7 +785,7 @@ Please create or import a wallet first before switching to LIVE mode.
     }
 
     // Toggle mode
-    config.mode = newMode;
+    const newMode = await toggleTradingMode(telegramId);
 
     const emoji = newMode === 'LIVE' ? '🔴' : '📝';
     const message = `
