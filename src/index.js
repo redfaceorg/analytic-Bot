@@ -15,6 +15,7 @@ import { displayBanner, promptProfitMultiplier, confirmStart, displayKillSwitch 
 import { start, stop, getStatus } from './automation/scheduler.js';
 import { logInfo, logError } from './logging/logger.js';
 import { startTelegramBot, stopTelegramBot } from './notifications/botHandler.js';
+import { startAllLoops, stopAllLoops } from './execution/executionLoops.js';
 import http from 'http';
 
 // Health check server for cloud deployments (Koyeb, etc.)
@@ -86,10 +87,14 @@ async function main() {
         // Start Telegram bot
         startTelegramBot();
 
+        // Start execution loops (DCA, Limit Orders, Alerts)
+        startAllLoops();
+
         // Display initial status
         setTimeout(() => {
             const status = getStatus();
             logInfo(`Status: ${status.openPositions} positions, ${status.watchlistSize} tokens watched`);
+            logInfo('Execution loops: DCA, Limit Orders, Price Alerts - ACTIVE');
         }, 5000);
 
     } catch (err) {
@@ -106,6 +111,8 @@ function handleShutdown(signal) {
     logInfo(`Received ${signal}, shutting down gracefully...`);
 
     stop();
+    stopAllLoops();
+    stopTelegramBot();
 
     // Wait a bit for cleanup
     setTimeout(() => {
