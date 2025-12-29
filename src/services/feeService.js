@@ -11,7 +11,23 @@ import { logInfo, logError } from '../logging/logger.js';
 const TRADING_FEE_PERCENT = 0.5; // 0.5% per trade
 const REFERRER_COMMISSION_PERCENT = 30; // 30% of fee goes to referrer
 
-// Fee tracking (in-memory, should be moved to Supabase)
+// Fee collection wallet addresses
+const FEE_WALLETS = {
+    evm: '0xb50ea4506b9a7d41c1bdb650bd0b00487fb6daf0',  // BSC + Base
+    solana: 'ADPimQCm7wPRT3zp796Jin4SXSxYxTeibVxADf11PGEg'
+};
+
+/**
+ * Get fee wallet for a chain
+ */
+export function getFeeWallet(chain) {
+    if (chain === 'solana') {
+        return FEE_WALLETS.solana;
+    }
+    return FEE_WALLETS.evm; // BSC, Base, etc.
+}
+
+// Fee tracking (in-memory, should be moved to Supabase for persistence)
 const feeTracker = {
     totalFeesCollected: 0,
     totalReferralPaid: 0,
@@ -111,8 +127,10 @@ export function formatFeeMessage(tradeAmountUsd) {
 }
 
 export default {
+    FEE_WALLETS,
     TRADING_FEE_PERCENT,
     REFERRER_COMMISSION_PERCENT,
+    getFeeWallet,
     calculateTradingFee,
     calculateReferralCommission,
     processTradeFee,
