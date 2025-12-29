@@ -24,7 +24,13 @@ import {
     handleSettings,
     handleReferral,
     handleLeaderboard,
-    handleCopyTrading
+    handleCopyTrading,
+    handleAlerts,
+    handleWatchlist,
+    handlePortfolio,
+    handleDCA,
+    handleGas,
+    handleTools
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -233,6 +239,33 @@ async function handleCallback(query, chatId, username) {
         case 'copy_settings':
         case 'copy_following':
             await handleCopyTrading(chatId);
+            break;
+        // Tools callbacks
+        case 'tools':
+            await handleTools(chatId);
+            break;
+        case 'alerts':
+        case 'alert_add':
+        case 'alert_clear':
+            await handleAlerts(chatId);
+            break;
+        case 'watchlist':
+        case 'watchlist_clear':
+            await handleWatchlist(chatId);
+            break;
+        case 'portfolio':
+        case 'portfolio_refresh':
+        case 'portfolio_export':
+            await handlePortfolio(chatId);
+            break;
+        case 'dca':
+        case 'dca_new':
+        case 'dca_pause':
+            await handleDCA(chatId);
+            break;
+        case 'gas':
+        case 'gas_refresh':
+            await handleGas();
             break;
         // Wallet callbacks
         case 'wallet':

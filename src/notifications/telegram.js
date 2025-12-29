@@ -1136,14 +1136,14 @@ function getMainMenuKeyboard() {
         ],
         [
             { text: '🔍 Token', callback_data: 'token_prompt' },
-            { text: '⚙️ Settings', callback_data: 'settings' }
+            { text: '🛠️ Tools', callback_data: 'tools' }
         ],
         [
             { text: '👥 Referral', callback_data: 'referral' },
             { text: '🤖 Copy Trade', callback_data: 'copy_trade' }
         ],
         [
-            { text: '🏆 Leaderboard', callback_data: 'leaderboard' },
+            { text: '⚙️ Settings', callback_data: 'settings' },
             { text: '🔄 Refresh', callback_data: 'refresh' }
         ]
     ];
@@ -1216,5 +1216,249 @@ export default {
     handleSettings,
     handleReferral,
     handleLeaderboard,
-    handleCopyTrading
+    handleCopyTrading,
+    handleAlerts,
+    handleWatchlist,
+    handlePortfolio,
+    handleDCA,
+    handleGas,
+    handleTools
 };
+
+/**
+ * Handle price alerts menu
+ */
+export async function handleAlerts(userId) {
+    const { getUserAlerts } = await import('../services/userTools.js');
+    const alerts = getUserAlerts(userId);
+
+    let alertsList = '';
+    if (alerts.length === 0) {
+        alertsList = '<i>No active alerts</i>';
+    } else {
+        alertsList = alerts.map((a, i) =>
+            `${i + 1}. ${a.tokenName} ${a.condition === 'above' ? '📈' : '📉'} $${a.targetPrice} ${a.active ? '🟢' : '⚪'}`
+        ).join('\n');
+    }
+
+    const message = `
+${BOT_NAME} <b>🔔 Price Alerts</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+📋 <b>Your Alerts (${alerts.length})</b>
+${alertsList}
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<i>To add: /alert TOKEN ABOVE/BELOW PRICE</i>
+Example: <code>/alert BTC above 50000</code>
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '➕ Add Alert', callback_data: 'alert_add' },
+            { text: '🗑️ Clear All', callback_data: 'alert_clear' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'tools' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle watchlist menu
+ */
+export async function handleWatchlist(userId) {
+    const { getWatchlist } = await import('../services/userTools.js');
+    const watchlist = getWatchlist(userId);
+
+    let tokensList = '';
+    if (watchlist.length === 0) {
+        tokensList = '<i>Watchlist empty</i>\n\nUse /token to scan and add tokens!';
+    } else {
+        tokensList = watchlist.map((t, i) =>
+            `${i + 1}. <b>${t.symbol}</b> (${t.chain.toUpperCase()})`
+        ).join('\n');
+    }
+
+    const message = `
+${BOT_NAME} <b>⭐ Watchlist</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+📋 <b>Saved Tokens (${watchlist.length}/20)</b>
+${tokensList}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '🔍 Scan Token', callback_data: 'token_prompt' },
+            { text: '🗑️ Clear All', callback_data: 'watchlist_clear' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'tools' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle portfolio view
+ */
+export async function handlePortfolio(userId) {
+    const { getPortfolio } = await import('../services/userTools.js');
+    const portfolio = getPortfolio(userId);
+
+    let totalValue = 0;
+    let holdingsList = '';
+
+    if (portfolio.length === 0) {
+        holdingsList = '<i>No holdings tracked</i>';
+    } else {
+        holdingsList = portfolio.map((h, i) => {
+            const value = h.amount * h.avgPrice;
+            totalValue += value;
+            return `${i + 1}. <b>${h.symbol}</b>: ${h.amount.toFixed(4)} (~$${value.toFixed(2)})`;
+        }).join('\n');
+    }
+
+    const message = `
+${BOT_NAME} <b>📊 Portfolio</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+💰 <b>Total Value:</b> <code>$${totalValue.toFixed(2)}</code>
+
+📋 <b>Holdings</b>
+${holdingsList}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '🔄 Refresh Prices', callback_data: 'portfolio_refresh' },
+            { text: '📥 Export CSV', callback_data: 'portfolio_export' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'tools' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle DCA (Dollar Cost Averaging) menu
+ */
+export async function handleDCA(userId) {
+    const { getDCAPlans } = await import('../services/userTools.js');
+    const plans = getDCAPlans(userId);
+
+    let plansList = '';
+    if (plans.length === 0) {
+        plansList = '<i>No DCA plans active</i>';
+    } else {
+        plansList = plans.map((p, i) =>
+            `${i + 1}. ${p.tokenName} - $${p.amountUsd}/${p.interval} ${p.active ? '🟢' : '⏸️'}`
+        ).join('\n');
+    }
+
+    const message = `
+${BOT_NAME} <b>📅 DCA (Auto-Buy)</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>Dollar Cost Averaging</b>
+Automatically buy tokens at regular intervals!
+
+📋 <b>Your Plans</b>
+${plansList}
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<i>Example: Buy $10 of SOL daily</i>
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '➕ New DCA Plan', callback_data: 'dca_new' },
+            { text: '⏸️ Pause All', callback_data: 'dca_pause' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'tools' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle gas tracker
+ */
+export async function handleGas() {
+    const { getGasPrices } = await import('../services/userTools.js');
+    const gas = await getGasPrices();
+
+    const message = `
+${BOT_NAME} <b>⛽ Gas Tracker</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+🔷 <b>BSC</b>
+┌ 🐢 Low: ${gas.bsc.low} Gwei
+├ 🚗 Standard: ${gas.bsc.standard} Gwei
+└ 🚀 Fast: ${gas.bsc.fast} Gwei
+
+🔵 <b>Base</b>
+┌ 🐢 Low: ${gas.base.low} ETH
+├ 🚗 Standard: ${gas.base.standard} ETH
+└ 🚀 Fast: ${gas.base.fast} ETH
+
+🟣 <b>Solana</b>
+┌ 🐢 Low: ${gas.solana.low} SOL
+├ 🚗 Standard: ${gas.solana.standard} SOL
+└ 🚀 Fast: ${gas.solana.fast} SOL
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '🔄 Refresh', callback_data: 'gas_refresh' }],
+        [{ text: '◀️ Back', callback_data: 'tools' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle tools menu (central hub for all user tools)
+ */
+export async function handleTools(userId) {
+    const message = `
+${BOT_NAME} <b>🛠️ Tools</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Quick access to all trading tools:
+
+🔔 <b>Price Alerts</b> - Get notified at target prices
+⭐ <b>Watchlist</b> - Track favorite tokens
+📊 <b>Portfolio</b> - View all holdings
+📅 <b>DCA</b> - Auto-buy on schedule
+⛽ <b>Gas</b> - Check gas prices
+📤 <b>Export</b> - Download trade history
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '🔔 Alerts', callback_data: 'alerts' },
+            { text: '⭐ Watchlist', callback_data: 'watchlist' }
+        ],
+        [
+            { text: '📊 Portfolio', callback_data: 'portfolio' },
+            { text: '📅 DCA', callback_data: 'dca' }
+        ],
+        [
+            { text: '⛽ Gas', callback_data: 'gas' },
+            { text: '📤 Export', callback_data: 'export_trades' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'menu' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
