@@ -23,7 +23,8 @@ import {
     handleSell,
     handleSettings,
     handleReferral,
-    handleLeaderboard
+    handleLeaderboard,
+    handleCopyTrading
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -226,6 +227,12 @@ async function handleCallback(query, chatId, username) {
         case 'lb_weekly':
         case 'lb_all':
             await handleLeaderboard();
+            break;
+        // Copy trading callbacks
+        case 'copy_trade':
+        case 'copy_settings':
+        case 'copy_following':
+            await handleCopyTrading(chatId);
             break;
         // Wallet callbacks
         case 'wallet':

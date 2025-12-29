@@ -1140,12 +1140,54 @@ function getMainMenuKeyboard() {
         ],
         [
             { text: '👥 Referral', callback_data: 'referral' },
-            { text: '🏆 Leaderboard', callback_data: 'leaderboard' }
+            { text: '🤖 Copy Trade', callback_data: 'copy_trade' }
         ],
         [
+            { text: '🏆 Leaderboard', callback_data: 'leaderboard' },
             { text: '🔄 Refresh', callback_data: 'refresh' }
         ]
     ];
+}
+
+/**
+ * Handle copy trading menu
+ */
+export async function handleCopyTrading(userId) {
+    const message = `
+${BOT_NAME} <b>🤖 Copy Trading</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>Auto-Copy Top Traders!</b>
+
+When you follow a trader, their trades
+are automatically copied to your wallet.
+
+📊 <b>Following:</b> 0 traders
+
+⚙️ <b>Settings</b>
+┌ Enabled: ✅
+├ Copy Size: 10%
+└ Max/Trade: $100
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<i>Browse Leaderboard to find traders!</i>
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '🏆 Browse Traders', callback_data: 'leaderboard' }
+        ],
+        [
+            { text: '⚙️ Copy Settings', callback_data: 'copy_settings' },
+            { text: '📊 My Following', callback_data: 'copy_following' }
+        ],
+        [
+            { text: '◀️ Back', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard);
 }
 
 export default {
@@ -1173,5 +1215,6 @@ export default {
     handleSell,
     handleSettings,
     handleReferral,
-    handleLeaderboard
+    handleLeaderboard,
+    handleCopyTrading
 };
