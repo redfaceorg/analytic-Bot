@@ -150,27 +150,9 @@ function formatUptime(seconds) {
 }
 
 /**
- * Main menu keyboard (Maestro-style)
+ * Main menu keyboard - see updated version below
+ * (Moved to avoid duplication)
  */
-function getMainMenuKeyboard() {
-    return [
-        [
-            { text: '📊 Status', callback_data: 'status' },
-            { text: '💼 Positions', callback_data: 'positions' }
-        ],
-        [
-            { text: '💰 Wallet', callback_data: 'wallet' },
-            { text: '📈 PnL', callback_data: 'pnl' }
-        ],
-        [
-            { text: '⚙️ Settings', callback_data: 'settings' },
-            { text: '❓ Help', callback_data: 'help' }
-        ],
-        [
-            { text: '🔄 Refresh', callback_data: 'refresh' }
-        ]
-    ];
-}
 
 /**
  * Positions keyboard
