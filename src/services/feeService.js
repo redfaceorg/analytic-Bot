@@ -8,8 +8,8 @@
 import { logInfo, logError } from '../logging/logger.js';
 
 // Fee configuration
-const TRADING_FEE_PERCENT = 0.5; // 0.5% per trade
-const REFERRER_COMMISSION_PERCENT = 30; // 30% of fee goes to referrer
+export const TRADING_FEE_PERCENT = 0.5; // 0.5% per trade
+export const REFERRER_COMMISSION_PERCENT = 30; // 30% of fee goes to referrer
 
 // Fee collection wallet addresses
 const FEE_WALLETS = {
