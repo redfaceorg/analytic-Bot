@@ -146,6 +146,71 @@ export function formatFeeMessage(tradeAmountUsd) {
     return `💰 Trading Fee: $${fee.toFixed(4)} (${TRADING_FEE_PERCENT}%)`;
 }
 
+/**
+ * Transfer fee to development wallet (on-chain)
+ * @param {string} chain - Chain ID (bsc, base, solana)
+ * @param {number} amountNative - Amount in native token (BNB, ETH, SOL)
+ * @param {object} wallet - User's wallet for signing
+ * @returns {Promise<object>} Transaction result
+ */
+export async function transferFeeToDevWallet(chain, amountNative, wallet) {
+    const feeWallet = getFeeWallet(chain);
+
+    if (amountNative <= 0) {
+        return { success: false, error: 'Amount too small' };
+    }
+
+    try {
+        if (chain === 'solana') {
+            // Solana transfer
+            const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js');
+            const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com');
+
+            const lamports = Math.floor(amountNative * 1e9); // SOL to lamports
+
+            const transaction = new Transaction().add(
+                SystemProgram.transfer({
+                    fromPubkey: wallet.publicKey,
+                    toPubkey: new PublicKey(feeWallet),
+                    lamports
+                })
+            );
+
+            transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+            transaction.feePayer = wallet.publicKey;
+
+            const signedTx = await wallet.signTransaction(transaction);
+            const txHash = await connection.sendRawTransaction(signedTx.serialize());
+
+            logInfo(`💰 Fee transferred to dev wallet (Solana): ${amountNative} SOL, tx: ${txHash}`);
+            return { success: true, txHash, chain: 'solana' };
+
+        } else {
+            // EVM transfer (BSC, Base)
+            const { ethers } = await import('ethers');
+            const rpcUrl = chain === 'base'
+                ? (process.env.BASE_RPC_URL || 'https://mainnet.base.org')
+                : (process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org');
+
+            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            const signer = new ethers.Wallet(wallet.privateKey, provider);
+
+            const tx = await signer.sendTransaction({
+                to: feeWallet,
+                value: ethers.parseEther(amountNative.toString())
+            });
+
+            await tx.wait();
+
+            logInfo(`💰 Fee transferred to dev wallet (${chain.toUpperCase()}): ${amountNative} native, tx: ${tx.hash}`);
+            return { success: true, txHash: tx.hash, chain };
+        }
+    } catch (err) {
+        logError(`Failed to transfer fee on ${chain}`, err);
+        return { success: false, error: err.message };
+    }
+}
+
 export default {
     FEE_WALLETS,
     TRADING_FEE_PERCENT,
@@ -157,5 +222,6 @@ export default {
     getUserTotalFees,
     getUserReferralEarnings,
     getFeeSummary,
-    formatFeeMessage
+    formatFeeMessage,
+    transferFeeToDevWallet
 };
