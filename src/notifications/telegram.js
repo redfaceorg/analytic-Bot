@@ -24,7 +24,8 @@ import {
     markOnboardingComplete,
     getAutoTradeSettings,
     updateAutoTradeSettings,
-    toggleAutoTrade
+    toggleAutoTrade,
+    getUserByTelegramId
 } from '../wallet/userWalletManager.js';
 import config from '../config/index.js';
 
@@ -1582,6 +1583,7 @@ ${leaderboardText}
  * Update main menu to include new buttons
  */
 function getMainMenuKeyboard() {
+    const modeText = config.mode === 'LIVE' ? '🔴 LIVE' : '📝 PAPER';
     return [
         [
             { text: '📊 Status', callback_data: 'status' },
@@ -1604,7 +1606,10 @@ function getMainMenuKeyboard() {
             { text: '👥 Referral', callback_data: 'referral' },
             { text: '⚙️ Settings', callback_data: 'settings' }
         ],
-        [{ text: '🔄 Refresh', callback_data: 'refresh' }]
+        [
+            { text: `${modeText} Mode`, callback_data: 'toggle_mode' },
+            { text: '🔄 Refresh', callback_data: 'refresh' }
+        ]
     ];
 }
 

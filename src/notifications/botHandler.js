@@ -298,6 +298,9 @@ async function handleCallback(query, chatId, username) {
         case 'settings':
             await handleSettings();
             break;
+        case 'toggle_mode':
+            await handleToggleMode(chatId);
+            break;
         case 'signals':
             await handleStart();
             break;
