@@ -21,7 +21,10 @@ import {
     getUserWallet,
     getWalletForTrading,
     hasCompletedOnboarding,
-    markOnboardingComplete
+    markOnboardingComplete,
+    getAutoTradeSettings,
+    updateAutoTradeSettings,
+    toggleAutoTrade
 } from '../wallet/userWalletManager.js';
 import config from '../config/index.js';
 
@@ -1257,6 +1260,9 @@ ${BOT_NAME} <b>Settings</b>
             { text: config.mode === 'PAPER' ? '🔴 Switch to LIVE' : '📝 Switch to PAPER', callback_data: 'wallet_toggle_mode' }
         ],
         [
+            { text: '🤖 Auto-Trade Settings', callback_data: 'autotrade' }
+        ],
+        [
             { text: '🎯 TP: ' + (config.takeProfit?.multiplier || 5) + 'x', callback_data: 'settings_tp' },
             { text: '🛑 SL: ' + (config.risk?.stopLossPercent || 5) + '%', callback_data: 'settings_sl' }
         ],
@@ -1953,6 +1959,180 @@ ${messageText}
     }
 }
 
+// ==================== AUTO-TRADE SYSTEM ====================
+
+/**
+ * Handle auto-trade settings menu
+ */
+export async function handleAutoTradeSettings() {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const settings = await getAutoTradeSettings(telegramId);
+    const statusEmoji = settings.enabled ? '🟢' : '🔴';
+    const statusText = settings.enabled ? 'ENABLED' : 'DISABLED';
+
+    const message = `
+${BOT_NAME} <b>🤖 Auto-Trade Settings</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+${statusEmoji} <b>Auto-Trade:</b> ${statusText}
+
+When enabled, the bot will automatically execute trades when signals are detected.
+
+<b>Current Settings:</b>
+┌ Trade Amount: <code>${settings.amount}</code> (per trade)
+├ Mode: <code>${settings.mode}</code>
+└ Profit Alerts: <code>${settings.thresholds.join('%, ')}%</code>
+
+⚠️ <b>WARNING:</b>
+Auto-trading uses REAL funds in LIVE mode!
+Start with small amounts to test.
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const toggleText = settings.enabled ? '🔴 Disable Auto-Trade' : '🟢 Enable Auto-Trade';
+
+    const keyboard = [
+        [{ text: toggleText, callback_data: 'autotrade_toggle' }],
+        [
+            { text: '💰 Set Amount: 0.05', callback_data: 'autotrade_amount_0.05' },
+            { text: '💰 Set Amount: 0.1', callback_data: 'autotrade_amount_0.1' }
+        ],
+        [
+            { text: '💰 Set Amount: 0.25', callback_data: 'autotrade_amount_0.25' },
+            { text: '💰 Set Amount: 0.5', callback_data: 'autotrade_amount_0.5' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'settings' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Toggle auto-trade and show confirmation
+ */
+export async function handleAutoTradeToggle() {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) return;
+
+    const updated = await toggleAutoTrade(telegramId);
+    const settings = await getAutoTradeSettings(telegramId);
+
+    const statusText = settings.enabled ? '🟢 ENABLED' : '🔴 DISABLED';
+    await sendMessage(`Auto-Trade is now ${statusText}`);
+
+    return handleAutoTradeSettings();
+}
+
+/**
+ * Set auto-trade amount
+ */
+export async function handleSetAutoTradeAmount(amount) {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) return;
+
+    await updateAutoTradeSettings(telegramId, { amount: parseFloat(amount) });
+    await sendMessage(`✅ Auto-trade amount set to <code>${amount}</code>`);
+
+    return handleAutoTradeSettings();
+}
+
+/**
+ * Notify user of a detected signal with Trade/Skip buttons
+ */
+export async function notifySignalToUser(signal, userId) {
+    const settings = await getAutoTradeSettings(userId);
+    const nativeSymbol = signal.chain === 'bsc' ? 'BNB' : signal.chain === 'base' ? 'ETH' : 'SOL';
+
+    // Create signal ID for callback
+    const signalId = Buffer.from(JSON.stringify({
+        token: signal.token,
+        chain: signal.chain,
+        pair: signal.pairAddress,
+        price: signal.entryPrice
+    })).toString('base64').slice(0, 60);
+
+    const message = `
+${BOT_NAME} <b>🚨 New Signal!</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>${signal.token}</b> on ${signal.chain.toUpperCase()}
+
+💰 Entry: <code>$${signal.entryPrice.toFixed(8)}</code>
+📊 Volume: <code>${signal.volumeRatio}x spike</code>
+📈 Change: <code>+${signal.priceChange5m}%</code>
+💪 Strength: <code>${signal.strength}/100</code>
+
+🎯 Take Profit: <code>$${signal.takeProfit.toFixed(8)}</code>
+🛑 Stop Loss: <code>$${signal.stopLoss.toFixed(8)}</code>
+
+${settings.enabled ? '🤖 <b>Auto-Trade:</b> Will execute automatically!' : '👆 <b>Tap below to trade or skip</b>'}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [];
+
+    if (!settings.enabled) {
+        // Manual mode - show trade buttons
+        keyboard.push([
+            { text: `🟢 Trade ${settings.amount} ${nativeSymbol}`, callback_data: `signal_trade_${signalId}` },
+            { text: '⏭️ Skip', callback_data: 'signal_skip' }
+        ]);
+        keyboard.push([
+            { text: `💰 Trade 0.5 ${nativeSymbol}`, callback_data: `quickbuy_${signal.chain}_0.5_${signal.tokenAddress}` }
+        ]);
+    } else {
+        // Auto mode - show what's happening
+        keyboard.push([
+            { text: '🤖 Auto-Trading...', callback_data: 'menu' }
+        ]);
+    }
+
+    keyboard.push([{ text: '📊 View Chart', url: `https://dexscreener.com/${signal.chain}/${signal.pairAddress}` }]);
+
+    return sendMessage(message, keyboard, 'HTML', userId);
+}
+
+/**
+ * Notify user of profit threshold reached with sell suggestion
+ */
+export async function notifyProfitAlert(position, currentProfit, userId) {
+    const profitEmoji = currentProfit >= 100 ? '🚀' : currentProfit >= 50 ? '🔥' : '📈';
+
+    const message = `
+${BOT_NAME} <b>${profitEmoji} Profit Alert!</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>${position.token}</b> is up <code>+${currentProfit.toFixed(1)}%</code>!
+
+💰 Entry: <code>$${position.entryPrice.toFixed(8)}</code>
+📈 Current: <code>$${position.currentPrice.toFixed(8)}</code>
+
+<b>💡 Suggestion:</b> 
+Consider taking ${currentProfit >= 50 ? 'full' : 'partial'} profits!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '💵 Sell 25%', callback_data: `sell_${position.id}_25` },
+            { text: '💰 Sell 50%', callback_data: `sell_${position.id}_50` }
+        ],
+        [
+            { text: '🤑 Sell 100%', callback_data: `sell_${position.id}_100` },
+            { text: '⏳ Hold', callback_data: 'menu' }
+        ]
+    ];
+
+    return sendMessage(message, keyboard, 'HTML', userId);
+}
+
 export default {
     isTelegramEnabled,
     setCurrentUser,
@@ -2000,7 +2180,13 @@ export default {
     handleAdminUsers,
     handleAdminStats,
     handleBroadcastPrompt,
-    handleBroadcast
+    handleBroadcast,
+    // Auto-trade functions
+    handleAutoTradeSettings,
+    handleAutoTradeToggle,
+    handleSetAutoTradeAmount,
+    notifySignalToUser,
+    notifyProfitAlert
 };
 
 /**

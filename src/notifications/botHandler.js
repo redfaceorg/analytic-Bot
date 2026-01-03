@@ -40,7 +40,11 @@ import {
     handleAdminUsers,
     handleAdminStats,
     handleBroadcastPrompt,
-    handleBroadcast
+    handleBroadcast,
+    // Auto-trade functions
+    handleAutoTradeSettings,
+    handleAutoTradeToggle,
+    handleSetAutoTradeAmount
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -325,11 +329,28 @@ async function handleCallback(query, chatId, username) {
         case 'admin_broadcast':
             await handleBroadcastPrompt();
             break;
+        // Auto-trade callbacks
+        case 'autotrade':
+            await handleAutoTradeSettings();
+            break;
+        case 'autotrade_toggle':
+            await handleAutoTradeToggle();
+            break;
+        case 'signal_skip':
+            await handleStart(); // Go back to menu
+            break;
         // Onboarding callbacks
         case 'onboarding_skip':
             await skipOnboarding();
             break;
         default:
+            // Check for autotrade amount callbacks (autotrade_amount_0.1, etc.)
+            if (action.startsWith('autotrade_amount_')) {
+                const amount = action.replace('autotrade_amount_', '');
+                await handleSetAutoTradeAmount(amount);
+                return;
+            }
+
             // Check for onboarding navigation callbacks (onboarding_next_2, etc.)
             if (action.startsWith('onboarding_next_')) {
                 const step = parseInt(action.replace('onboarding_next_', ''));

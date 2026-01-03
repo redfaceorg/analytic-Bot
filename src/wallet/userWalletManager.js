@@ -97,7 +97,15 @@ export async function getOrCreateUser(telegramId, username = null) {
                 telegram_id: telegramId,
                 username: username,
                 referral_code: referralCode,
-                settings: { mode: 'PAPER', take_profit: 5, stop_loss: 5, onboarding_completed: false }
+                settings: {
+                    mode: 'PAPER',
+                    take_profit: 5,
+                    stop_loss: 5,
+                    onboarding_completed: false,
+                    auto_trade_enabled: false,
+                    auto_trade_amount: 0.1,
+                    profit_alert_thresholds: [25, 50, 100]
+                }
             })
             .select()
             .single();
@@ -466,6 +474,41 @@ export async function markOnboardingComplete(telegramId) {
     return updated;
 }
 
+/**
+ * Get user's auto-trade settings
+ */
+export async function getAutoTradeSettings(telegramId) {
+    const user = await getUserByTelegramId(telegramId);
+    if (!user) return { enabled: false, amount: 0.1, thresholds: [25, 50, 100] };
+
+    return {
+        enabled: user.settings?.auto_trade_enabled || false,
+        amount: user.settings?.auto_trade_amount || 0.1,
+        thresholds: user.settings?.profit_alert_thresholds || [25, 50, 100],
+        mode: user.settings?.mode || 'PAPER'
+    };
+}
+
+/**
+ * Update auto-trade settings
+ */
+export async function updateAutoTradeSettings(telegramId, settings) {
+    const updates = {};
+    if (typeof settings.enabled !== 'undefined') updates.auto_trade_enabled = settings.enabled;
+    if (typeof settings.amount !== 'undefined') updates.auto_trade_amount = settings.amount;
+    if (Array.isArray(settings.thresholds)) updates.profit_alert_thresholds = settings.thresholds;
+
+    return updateUserSettings(telegramId, updates);
+}
+
+/**
+ * Toggle auto-trade on/off
+ */
+export async function toggleAutoTrade(telegramId) {
+    const current = await getAutoTradeSettings(telegramId);
+    return updateUserSettings(telegramId, { auto_trade_enabled: !current.enabled });
+}
+
 export default {
     getOrCreateUser,
     getUserByTelegramId,
@@ -480,5 +523,8 @@ export default {
     toggleTradingMode,
     getUserMode,
     hasCompletedOnboarding,
-    markOnboardingComplete
+    markOnboardingComplete,
+    getAutoTradeSettings,
+    updateAutoTradeSettings,
+    toggleAutoTrade
 };
