@@ -11,6 +11,7 @@ import { ethers } from 'ethers';
 import { logInfo, logTrade, logError, logWarn } from '../logging/logger.js';
 import config, { getChainConfig } from '../config/index.js';
 import { executeWithRetry } from './paperTrader.js';
+import { processTradeFee, transferFeeToDevWallet, calculateTradingFee } from '../services/feeService.js';
 
 // Standard ERC20 ABI (minimal)
 const ERC20_ABI = [
@@ -279,11 +280,29 @@ export async function executeLiveSell(position, currentPrice, reason) {
             gasUsed: receipt.gasUsed.toString()
         });
 
+        // Collect fee and transfer to dev wallet
+        const proceedsFloat = parseFloat(ethers.formatEther(expectedOut));
+        const feeUsd = calculateTradingFee(proceedsFloat);
+
+        if (feeUsd > 0.0001) { // Only transfer if fee is meaningful
+            try {
+                await processTradeFee(position.userId, proceedsFloat, position.referrerId, tx.hash);
+
+                // Transfer net fee (70%) to dev wallet
+                const netFeeNative = feeUsd * 0.7; // 70% after referral
+                await transferFeeToDevWallet(position.chain, netFeeNative, wallet);
+                logInfo(`💰 Fee collected: ${feeUsd.toFixed(6)} ${chainConfig.nativeToken.symbol}`);
+            } catch (feeErr) {
+                logError('Fee transfer failed (trade still succeeded)', feeErr);
+            }
+        }
+
         return {
             txHash: tx.hash,
             blockNumber: receipt.blockNumber,
             gasUsed: receipt.gasUsed.toString(),
-            proceeds: ethers.formatEther(expectedOut)
+            proceeds: ethers.formatEther(expectedOut),
+            feeCollected: feeUsd
         };
     });
 
