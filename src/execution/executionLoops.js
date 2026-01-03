@@ -12,9 +12,11 @@ import { logInfo, logError, logWarn } from '../logging/logger.js';
 import config from '../config/index.js';
 import { getSupabase } from '../database/supabase.js';
 import { executeLiveBuy, executeLiveSell, isLiveEnabled } from '../execution/evmExecutor.js';
+import { executeSolanaBuy, executeSolanaSell, isSolanaLiveEnabled } from '../execution/solanaExecutor.js';
 import { executePaperBuy, executePaperSell } from '../execution/paperTrader.js';
 import { getTokenInfo } from '../analysis/tokenAnalyzer.js';
 import { getFeeWallet, TRADING_FEE_PERCENT } from '../services/feeService.js';
+import { getWalletForTrading } from '../wallet/userWalletManager.js';
 import { ethers } from 'ethers';
 
 // Execution intervals
@@ -113,8 +115,18 @@ async function executeDCAPlan(plan) {
         };
 
         let result;
-        if (userMode === 'LIVE' && isLiveEnabled()) {
-            result = await executeLiveBuy(signal, positionSize);
+        if (userMode === 'LIVE') {
+            // Get user's decrypted wallet for live trading
+            const telegramId = plan.users?.telegram_id;
+            const userWallet = telegramId ? await getWalletForTrading(telegramId, plan.chain) : null;
+
+            if (plan.chain === 'solana' && isSolanaLiveEnabled()) {
+                result = await executeSolanaBuy(signal, positionSize, userWallet);
+            } else if (isLiveEnabled()) {
+                result = await executeLiveBuy(signal, positionSize, userWallet);
+            } else {
+                result = await executePaperBuy(signal, positionSize);
+            }
         } else {
             result = await executePaperBuy(signal, positionSize);
         }
@@ -238,6 +250,7 @@ async function checkLimitOrder(order) {
         logInfo(`Limit order triggered: ${order.order_type} ${order.token_name} at $${currentPrice}`);
 
         const userMode = order.users?.settings?.mode || 'PAPER';
+        const telegramId = order.users?.telegram_id;
         let result;
 
         if (order.order_type === 'buy') {
@@ -249,8 +262,16 @@ async function checkLimitOrder(order) {
             };
             const positionSize = { positionSizeUsd: order.amount_usd || order.amount };
 
-            if (userMode === 'LIVE' && isLiveEnabled()) {
-                result = await executeLiveBuy(signal, positionSize);
+            if (userMode === 'LIVE') {
+                const userWallet = telegramId ? await getWalletForTrading(telegramId, order.chain) : null;
+
+                if (order.chain === 'solana' && isSolanaLiveEnabled()) {
+                    result = await executeSolanaBuy(signal, positionSize, userWallet);
+                } else if (isLiveEnabled()) {
+                    result = await executeLiveBuy(signal, positionSize, userWallet);
+                } else {
+                    result = await executePaperBuy(signal, positionSize);
+                }
             } else {
                 result = await executePaperBuy(signal, positionSize);
             }
@@ -259,11 +280,21 @@ async function checkLimitOrder(order) {
             const position = {
                 token: order.token_name,
                 tokenAddress: order.token_address,
-                chain: order.chain
+                chain: order.chain,
+                userId: order.user_id,
+                referrerId: order.users?.referrer_id
             };
 
-            if (userMode === 'LIVE' && isLiveEnabled()) {
-                result = await executeLiveSell(position, currentPrice, 'LIMIT_ORDER');
+            if (userMode === 'LIVE') {
+                const userWallet = telegramId ? await getWalletForTrading(telegramId, order.chain) : null;
+
+                if (order.chain === 'solana' && isSolanaLiveEnabled()) {
+                    result = await executeSolanaSell(position, currentPrice, 'LIMIT_ORDER', userWallet);
+                } else if (isLiveEnabled()) {
+                    result = await executeLiveSell(position, currentPrice, 'LIMIT_ORDER', userWallet);
+                } else {
+                    result = await executePaperSell(position, currentPrice, 'LIMIT_ORDER');
+                }
             } else {
                 result = await executePaperSell(position, currentPrice, 'LIMIT_ORDER');
             }
