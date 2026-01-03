@@ -1153,18 +1153,22 @@ export async function handleBuy(chain, amount, signalData) {
         const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
         const amountNum = parseFloat(amount);
 
-        // Check if wallet exists
-        const summary = getWalletSummary();
-        if (chain === 'solana' && !summary.hasSolana) {
-            return sendMessage('❌ No Solana wallet configured. Please create one first.', [
-                [{ text: '💰 Wallet', callback_data: 'wallet' }]
-            ]);
+        // Check if wallet exists (only required for LIVE mode)
+        const userMode = await getUserMode(currentUserChatId);
+        if (userMode === 'LIVE') {
+            const summary = getWalletSummary();
+            if (chain === 'solana' && !summary.hasSolana) {
+                return sendMessage('❌ No Solana wallet configured. Please create one first.', [
+                    [{ text: '💰 Wallet', callback_data: 'wallet' }]
+                ]);
+            }
+            if ((chain === 'bsc' || chain === 'base') && !summary.hasEvm) {
+                return sendMessage('❌ No EVM wallet configured. Please create one first.', [
+                    [{ text: '💰 Wallet', callback_data: 'wallet' }]
+                ]);
+            }
         }
-        if ((chain === 'bsc' || chain === 'base') && !summary.hasEvm) {
-            return sendMessage('❌ No EVM wallet configured. Please create one first.', [
-                [{ text: '💰 Wallet', callback_data: 'wallet' }]
-            ]);
-        }
+        // PAPER mode doesn't require wallet - uses simulated balance
 
         // Show confirmation
         const confirmMessage = `
