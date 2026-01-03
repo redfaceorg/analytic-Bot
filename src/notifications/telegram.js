@@ -11,6 +11,7 @@ import { logInfo, logError } from '../logging/logger.js';
 import { getStatus } from '../automation/scheduler.js';
 import { getBalance, getOpenPositions } from '../automation/state.js';
 import { getPnLSummary } from '../logging/pnlTracker.js';
+import { getSupabase } from '../database/supabase.js';
 import {
     getOrCreateUser,
     getWalletSummary,
@@ -84,12 +85,14 @@ async function sendMessage(text, keyboard = null, parseMode = 'HTML', targetChat
 
         if (!response.ok) {
             const error = await response.text();
-            logError('Telegram send failed', { error });
+            logError(`Telegram send failed to ${chatId}: ${error}`);
+            console.error('TELEGRAM ERROR DETAILS:', { chatId, error, text: text?.slice(0, 100) });
             return false;
         }
         return true;
     } catch (err) {
         logError('Telegram error', err);
+        console.error('TELEGRAM CATCH ERROR:', err.message);
         return false;
     }
 }
