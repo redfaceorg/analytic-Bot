@@ -129,9 +129,10 @@ async function getJupiterSwapTx(quoteResponse, userPublicKey) {
  * Execute a live buy on Solana via Jupiter
  * @param {Object} signal - Trading signal
  * @param {Object} positionSize - Position sizing
+ * @param {Object} userWallet - Optional user wallet (Keypair from getWalletForTrading)
  * @returns {Promise<Object>} Transaction result
  */
-export async function executeSolanaBuy(signal, positionSize) {
+export async function executeSolanaBuy(signal, positionSize, userWallet = null) {
     if (!isSolanaLiveEnabled()) {
         logError('Solana live trading is not enabled!');
         return { success: false, error: 'Solana live trading disabled' };
@@ -141,7 +142,12 @@ export async function executeSolanaBuy(signal, positionSize) {
 
     const result = await executeWithRetry(async () => {
         const conn = getConnection();
-        const walletObj = await getSolanaWallet();
+
+        // Use user wallet if provided, otherwise fall back to global wallet
+        const walletObj = userWallet || await getSolanaWallet();
+        if (userWallet) {
+            logInfo(`Using per-user wallet: ${walletObj.publicKey.toString().slice(0, 10)}...`);
+        }
 
         // Calculate amount in lamports (SOL * 1e9)
         const solAmount = positionSize.positionSizeUsd / (signal.entryPrice || 1);
@@ -211,9 +217,10 @@ export async function executeSolanaBuy(signal, positionSize) {
  * @param {Object} position - Open position
  * @param {number} currentPrice - Current market price
  * @param {string} reason - Exit reason
+ * @param {Object} userWallet - Optional user wallet (Keypair from getWalletForTrading)
  * @returns {Promise<Object>} Transaction result
  */
-export async function executeSolanaSell(position, currentPrice, reason) {
+export async function executeSolanaSell(position, currentPrice, reason, userWallet = null) {
     if (!isSolanaLiveEnabled()) {
         logError('Solana live trading is not enabled!');
         return { success: false, error: 'Solana live trading disabled' };
@@ -224,7 +231,12 @@ export async function executeSolanaSell(position, currentPrice, reason) {
 
     const result = await executeWithRetry(async () => {
         const conn = getConnection();
-        const walletObj = await getSolanaWallet();
+
+        // Use user wallet if provided, otherwise fall back to global wallet
+        const walletObj = userWallet || await getSolanaWallet();
+        if (userWallet) {
+            logInfo(`Using per-user wallet: ${walletObj.publicKey.toString().slice(0, 10)}...`);
+        }
 
         // Get token balance
         const tokenAccounts = await conn.getParsedTokenAccountsByOwner(

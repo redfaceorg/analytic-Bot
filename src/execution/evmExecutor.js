@@ -130,9 +130,10 @@ async function approveToken(chainId, tokenAddress, spenderAddress, amount) {
  * Execute a live buy on EVM chain
  * @param {Object} signal - Trading signal
  * @param {Object} positionSize - Position sizing
+ * @param {Object} userWallet - Optional user wallet (from getWalletForTrading)
  * @returns {Promise<Object>} Transaction result
  */
-export async function executeLiveBuy(signal, positionSize) {
+export async function executeLiveBuy(signal, positionSize, userWallet = null) {
     if (!isLiveEnabled()) {
         logError('Live trading is not enabled!');
         return { success: false, error: 'Live trading disabled' };
@@ -142,7 +143,16 @@ export async function executeLiveBuy(signal, positionSize) {
 
     const result = await executeWithRetry(async () => {
         const chainConfig = getChainConfig(signal.chain);
-        const wallet = getWallet(signal.chain);
+
+        // Use user wallet if provided, otherwise fall back to global wallet
+        let wallet;
+        if (userWallet) {
+            const provider = getProvider(signal.chain);
+            wallet = userWallet.connect(provider);
+            logInfo(`Using per-user wallet: ${wallet.address.slice(0, 10)}...`);
+        } else {
+            wallet = getWallet(signal.chain);
+        }
         const router = new ethers.Contract(chainConfig.dex.router, ROUTER_ABI, wallet);
 
         // Get WETH address
@@ -209,9 +219,10 @@ export async function executeLiveBuy(signal, positionSize) {
  * @param {Object} position - Open position
  * @param {number} currentPrice - Current market price
  * @param {string} reason - Exit reason
+ * @param {Object} userWallet - Optional user wallet (from getWalletForTrading)
  * @returns {Promise<Object>} Transaction result
  */
-export async function executeLiveSell(position, currentPrice, reason) {
+export async function executeLiveSell(position, currentPrice, reason, userWallet = null) {
     if (!isLiveEnabled()) {
         logError('Live trading is not enabled!');
         return { success: false, error: 'Live trading disabled' };
@@ -222,7 +233,16 @@ export async function executeLiveSell(position, currentPrice, reason) {
 
     const result = await executeWithRetry(async () => {
         const chainConfig = getChainConfig(position.chain);
-        const wallet = getWallet(position.chain);
+
+        // Use user wallet if provided, otherwise fall back to global wallet
+        let wallet;
+        if (userWallet) {
+            const provider = getProvider(position.chain);
+            wallet = userWallet.connect(provider);
+            logInfo(`Using per-user wallet: ${wallet.address.slice(0, 10)}...`);
+        } else {
+            wallet = getWallet(position.chain);
+        }
         const router = new ethers.Contract(chainConfig.dex.router, ROUTER_ABI, wallet);
 
         // Get WETH address
