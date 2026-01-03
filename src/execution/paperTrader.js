@@ -12,6 +12,7 @@ import { logInfo, logTrade, logError } from '../logging/logger.js';
 import config from '../config/index.js';
 import { getBalance, updateBalance, addPosition, closePosition, getOpenPositions } from '../automation/state.js';
 import { recordTrade, getDailyStats } from '../risk/riskManager.js';
+import { processTradeFee } from '../services/feeService.js';
 
 // Simulated slippage range (0.1% to 0.5%)
 const MIN_SLIPPAGE = 0.001;
@@ -194,6 +195,12 @@ export async function executePaperSell(position, currentPrice, reason) {
 
         // Record trade with risk manager
         recordTrade(pnl);
+
+        // Process trading fee (for referral commissions)
+        // Note: In paper mode we still track fees for analytics
+        if (position.userId && proceeds > 0) {
+            await processTradeFee(position.userId, proceeds, position.referrerId, trade?.id);
+        }
 
         // Log the trade
         logTrade({

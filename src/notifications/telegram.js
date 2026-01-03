@@ -496,6 +496,68 @@ export async function handleStart() {
 }
 
 /**
+ * Handle /start with referral code
+ */
+export async function handleStartWithReferral(refCode, chatId) {
+    const telegramId = chatId?.toString() || currentUserChatId?.toString();
+
+    // Look up referrer by code
+    const supabase = getSupabase();
+    let referrerId = null;
+
+    if (supabase && refCode) {
+        const { data: referrer } = await supabase
+            .from('users')
+            .select('id')
+            .eq('referral_code', refCode.toUpperCase())
+            .single();
+
+        if (referrer) {
+            referrerId = referrer.id;
+            logInfo(`Referral code ${refCode} resolved to user ID ${referrerId}`);
+        }
+    }
+
+    // Create user with referrer
+    if (telegramId) {
+        const existingUser = await getUserByTelegramId(telegramId);
+
+        if (!existingUser) {
+            // New user - create with referrer
+            if (supabase && referrerId) {
+                const referralCode = `RF${telegramId.slice(-6)}${Date.now().toString(36).slice(-4)}`.toUpperCase();
+
+                const { data: newUser } = await supabase
+                    .from('users')
+                    .insert({
+                        telegram_id: telegramId,
+                        referrer_id: referrerId,
+                        referral_code: referralCode,
+                        settings: {
+                            mode: 'PAPER',
+                            take_profit: 5,
+                            stop_loss: 5,
+                            onboarding_completed: false
+                        }
+                    })
+                    .select()
+                    .single();
+
+                if (newUser) {
+                    logInfo(`New user ${telegramId} signed up via referral from ${referrerId}`);
+                    setCurrentUser(chatId);
+                    return showOnboardingWelcome();
+                }
+            }
+        }
+    }
+
+    // Fall back to normal start
+    setCurrentUser(chatId);
+    return handleStart();
+}
+
+/**
  * Handle /positions command with sell buttons
  */
 export async function handlePositions() {
@@ -2438,6 +2500,7 @@ export default {
     notifyStartup,
     notifyError,
     handleStart,
+    handleStartWithReferral,
     handlePositions,
     handlePnL,
     handleHelp,

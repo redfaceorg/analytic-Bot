@@ -49,7 +49,9 @@ import {
     handleWithdraw,
     handleWithdrawPrompt,
     // Trade history
-    handleTradeHistory
+    handleTradeHistory,
+    // Referral with code
+    handleStartWithReferral
 } from './telegram.js';
 
 import { executeWithdrawal } from '../wallet/userWalletManager.js';
@@ -186,8 +188,19 @@ async function handleCommand(command, chatId, username) {
         return;
     }
 
+    // Handle /start with optional referral code
+    if (command.startsWith('/start')) {
+        const parts = command.split(' ');
+        if (parts.length > 1 && parts[1].startsWith('ref_')) {
+            const refCode = parts[1].replace('ref_', '');
+            await handleStartWithReferral(refCode, chatId);
+        } else {
+            await handleStart();
+        }
+        return;
+    }
+
     switch (command) {
-        case '/start':
         case '/menu':
             await handleStart();
             break;

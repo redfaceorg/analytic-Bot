@@ -54,9 +54,10 @@ export function calculateReferralCommission(feeAmount) {
  * @param {string} userId - User ID
  * @param {number} tradeAmountUsd - Trade amount in USD
  * @param {string} referrerId - Referrer user ID (optional)
+ * @param {string} tradeId - Trade ID for linking (optional)
  * @returns {object} Fee breakdown
  */
-export function processTradeFee(userId, tradeAmountUsd, referrerId = null) {
+export async function processTradeFee(userId, tradeAmountUsd, referrerId = null, tradeId = null) {
     const fee = calculateTradingFee(tradeAmountUsd);
     let referralCommission = 0;
     let netFee = fee;
@@ -66,10 +67,29 @@ export function processTradeFee(userId, tradeAmountUsd, referrerId = null) {
         referralCommission = calculateReferralCommission(fee);
         netFee = fee - referralCommission;
 
-        // Track referral earnings
+        // Track in-memory
         const currentReferral = feeTracker.referralsByUser.get(referrerId) || 0;
         feeTracker.referralsByUser.set(referrerId, currentReferral + referralCommission);
         feeTracker.totalReferralPaid += referralCommission;
+
+        // Persist to Supabase
+        try {
+            const { getSupabase } = await import('../database/supabase.js');
+            const supabase = getSupabase();
+            if (supabase) {
+                await supabase
+                    .from('referral_earnings')
+                    .insert({
+                        user_id: referrerId,
+                        referred_user_id: userId,
+                        trade_id: tradeId,
+                        commission_amount: referralCommission
+                    });
+                logInfo(`Referral earning persisted: $${referralCommission.toFixed(4)} to ${referrerId}`);
+            }
+        } catch (err) {
+            logError('Failed to persist referral earning', err);
+        }
     }
 
     // Track fee collection
