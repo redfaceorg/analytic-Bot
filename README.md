@@ -1,84 +1,155 @@
-# DEX Trading Bot 🤖
+# RedFace Trading Bot 🤖
 
-Autonomous multi-chain DEX trading bot with paper trading mode.
+A powerful multi-chain DEX trading bot with Telegram integration, paper trading mode, and real-time trading via user-managed wallets.
 
-## Features
+## ✨ Features
 
-- **Multi-Chain**: BSC, Base, Solana
-- **Volume Spike Strategy**: Detects unusual volume bursts
-- **Risk Management**: Stop-loss, take-profit, daily limits
-- **Paper Trading**: Test without real funds
-- **Configurable X Profit**: 2x, 5x, 10x, 15x, or custom
+### Trading
+- **Multi-Chain Support**: BSC, Base, Solana, Ethereum Mainnet
+- **Paper & LIVE Trading**: Test strategies without real funds
+- **Per-User Wallets**: Each user controls their own encrypted wallet
+- **DCA Plans**: Automated dollar-cost averaging
+- **Limit Orders**: Buy/sell when price hits target
+- **Copy Trading**: Follow successful traders
 
-## Quick Start
+### Analytics
+- **Token Scanner**: Safety analysis with scam detection
+- **Price Alerts**: Get notified when price hits target
+- **PnL Cards**: Shareable trade result cards
+- **Gas Prices**: Real-time gas for all chains
+- **Leaderboard**: Top traders ranking
 
+### Revenue
+- **0.5% Trading Fee**: Collected on LIVE trades
+- **30% Referral Commission**: Referrers earn from referee trades
+- **Automated Fee Transfer**: Fees sent to development wallet
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
 ```bash
-# Install dependencies
 npm install
+```
 
-# Copy and configure environment
+### 2. Configure Environment
+```bash
 copy .env.example .env
-
-# Run in paper trading mode
-npm start
-
-# Run read-only (signals only, no trades)
-npm run readonly
 ```
 
-## Configuration
-
-Edit `.env` file:
-
+Edit `.env` with your values:
 ```env
-# Mode: READ_ONLY | PAPER | LIVE
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Supabase Database
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_anon_key
+
+# Mode: PAPER (default) or LIVE
 MODE=PAPER
-
-# Enabled chains
-ENABLE_BSC=true
-ENABLE_BASE=true
-ENABLE_SOLANA=true
-
-# Risk settings
-MAX_TRADES_PER_DAY=15
-RISK_PER_TRADE=5
-MAX_DAILY_DRAWDOWN=15
-STOP_LOSS_PERCENT=5
-
-# Profit target (prompted at startup if not set)
-PROFIT_MULTIPLIER=
+ENABLE_LIVE_TRADING=false
 ```
 
-## Modes
+### 3. Start the Bot
+```bash
+npm start
+```
+
+---
+
+## 📱 Telegram Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Main menu / dashboard |
+| `/wallet` | View & manage wallets |
+| `/positions` | View open positions |
+| `/pnl` | View profit/loss summary |
+| `/token <address>` | Analyze a token |
+| `/referral` | View referral stats |
+| `/settings` | Bot settings |
+| `/help` | Command list |
+
+### Admin Commands
+| Command | Description |
+|---------|-------------|
+| `/admin` | Admin dashboard |
+| `/users` | View all users |
+| `/broadcast <msg>` | Send message to all users |
+
+---
+
+## 🔧 Trading Modes
 
 | Mode | Description |
 |------|-------------|
-| `READ_ONLY` | Fetch data and detect signals, NO trades |
 | `PAPER` | Simulated trading with fake balance |
-| `LIVE` | Real trading (disabled by default) |
+| `LIVE` | Real trading using per-user wallets |
 
-## Strategy: Volume Spike
+### Switching Modes
+Users can switch modes via:
+- Dashboard button (`📝 PAPER Mode` / `🔴 LIVE Mode`)
+- Settings menu
 
-**Entry**:
-- 5m volume > 3x average hourly volume
-- Price change > 2% (positive)
+---
 
-**Exit**:
-- Take profit: Xx entry price (configurable)
-- Stop loss: -5% from entry
-- Time limit: 30 minutes max hold
+## 💰 Fee Structure
 
-## Kill Switch
+| Component | Percent | Recipient |
+|-----------|---------|-----------|
+| Trading Fee | 0.5% | Collected from proceeds |
+| Referral Commission | 30% of fee | Referrer |
+| Net Fee | 70% of fee | Development wallet |
 
-Press `Ctrl+C` to stop the bot safely.
+---
 
-## ⚠️ Warnings
+## 🔗 Supported Chains
 
-- **NEVER commit `.env` with private keys**
-- **Start with paper trading**
-- **Use a dedicated hot wallet with limited funds**
-- **Live trading is disabled by default**
+| Chain | DEX | Native Token |
+|-------|-----|--------------|
+| BSC | PancakeSwap | BNB |
+| Base | Aerodrome | ETH |
+| Solana | Jupiter | SOL |
+| Ethereum | Uniswap V2 | ETH |
 
-## License
+---
 
-MIT - Personal use only.
+## 🛡️ Security
+
+- **Encrypted Wallets**: User private keys encrypted with AES-256
+- **Row Level Security**: Supabase RLS enabled
+- **No Shared Keys**: Each user has their own wallet
+- **Paper Mode Default**: LIVE trading disabled by default
+
+---
+
+## 📊 Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from @BotFather |
+| `SUPABASE_URL` | ✅ | Supabase project URL |
+| `SUPABASE_ANON_KEY` | ✅ | Supabase anon key |
+| `MODE` | ❌ | PAPER or LIVE (default: PAPER) |
+| `ENABLE_LIVE_TRADING` | ❌ | Enable LIVE mode (default: false) |
+| `WALLET_ENCRYPTION_KEY` | ❌ | Key for wallet encryption |
+| `BSC_RPC_URL` | ❌ | Custom BSC RPC |
+| `BASE_RPC_URL` | ❌ | Custom Base RPC |
+| `SOLANA_RPC_URL` | ❌ | Custom Solana RPC |
+
+---
+
+## ⚠️ Disclaimer
+
+- This bot is for educational purposes only
+- Trading cryptocurrency involves significant risk
+- Never invest more than you can afford to lose
+- Always start with paper trading to test strategies
+
+---
+
+## 📄 License
+
+MIT License - Personal use only.
