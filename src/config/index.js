@@ -77,7 +77,7 @@ function buildConfig() {
     takeProfit: {
       multiplier: process.env.PROFIT_MULTIPLIER
         ? parseFloat(process.env.PROFIT_MULTIPLIER)
-        : null  // Will be prompted at startup if null
+        : 5  // Default to 5x if not set (avoids interactive prompt)
     },
 
     // Risk management
