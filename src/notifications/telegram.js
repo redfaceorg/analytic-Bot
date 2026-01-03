@@ -1156,7 +1156,7 @@ export async function handleBuy(chain, amount, signalData) {
         // Check if wallet exists (only required for LIVE mode)
         const userMode = await getUserMode(currentUserChatId);
         if (userMode === 'LIVE') {
-            const summary = getWalletSummary();
+            const summary = await getWalletSummary(currentUserChatId);
             if (chain === 'solana' && !summary.hasSolana) {
                 return sendMessage('❌ No Solana wallet configured. Please create one first.', [
                     [{ text: '💰 Wallet', callback_data: 'wallet' }]
