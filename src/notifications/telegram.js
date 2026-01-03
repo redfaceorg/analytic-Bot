@@ -302,34 +302,57 @@ ${isBuy ? `🎯 <b>Targets Set</b>
 }
 
 /**
- * Send position exit alert
+ * Send position exit alert with shareable PnL card
  */
-export async function notifyExit(exit) {
+export async function notifyExit(exit, userId = null) {
     const isProfit = exit.pnl >= 0;
-    const emoji = isProfit ? '✅' : '❌';
+    const emoji = isProfit ? '🚀' : '📉';
     const pnlColor = isProfit ? '🟢' : '🔴';
+    const hypeEmoji = isProfit ? '💎🙌' : '💪';
+    const sign = isProfit ? '+' : '';
+    const profitPercent = ((exit.exitPrice - exit.entryPrice) / exit.entryPrice * 100).toFixed(1);
 
+    // Create hype-style PnL card message
     const message = `
-${BOT_NAME} <b>Position Closed</b>
+${BOT_NAME} ${emoji} <b>Trade Complete!</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-${emoji} <b>${exit.token}</b>
-🔗 Chain: <code>${exit.chain.toUpperCase()}</code>
+🪙 <b>${exit.token}</b> on ${exit.chain.toUpperCase()}
 
-📋 <b>Exit Reason:</b> ${exit.reason}
+${pnlColor} <b>${sign}${profitPercent}%</b> ${hypeEmoji}
+💰 <b>${sign}$${exit.pnl.toFixed(2)}</b>
 
-💰 <b>Trade Summary</b>
-┌ Entry: <code>$${exit.entryPrice.toFixed(8)}</code>
-├ Exit: <code>$${exit.exitPrice.toFixed(8)}</code>
-└ Change: <code>${exit.pnlPercent}%</code>
-
-${pnlColor} <b>PnL:</b> <code>${isProfit ? '+' : ''}$${exit.pnl.toFixed(2)}</code>
+📈 Entry: <code>$${exit.entryPrice.toFixed(8)}</code>
+📉 Exit: <code>$${exit.exitPrice.toFixed(8)}</code>
+📋 Reason: <i>${exit.reason}</i>
 
 ━━━━━━━━━━━━━━━━━━━━━
+📤 <b>Share your ${isProfit ? 'win' : 'trade'}!</b>
     `.trim();
 
-    return sendMessage(message);
+    // Generate share text for Twitter/X
+    const shareText = encodeURIComponent(
+        `${isProfit ? '🚀' : '📉'} ${sign}${profitPercent}% on $${exit.token}!\n` +
+        `💰 ${sign}$${exit.pnl.toFixed(2)} profit\n\n` +
+        `Made with @RedFaceBot 🔴\n` +
+        `#Crypto #Trading #DeFi`
+    );
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${shareText}`;
+
+    const keyboard = [
+        [
+            { text: '🐦 Share on X', url: twitterUrl }
+        ],
+        [
+            { text: '📊 View Positions', callback_data: 'positions' },
+            { text: '📈 New Trade', callback_data: 'token_prompt' }
+        ],
+        [{ text: '◀️ Menu', callback_data: 'menu' }]
+    ];
+
+    return sendMessage(message, keyboard, 'HTML', userId);
 }
+
 
 /**
  * Send daily summary
@@ -762,6 +785,141 @@ ${depositInfo}
     ];
 
     return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle /withdraw command - Show withdrawal options
+ */
+export async function handleWithdraw() {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const summary = await getWalletSummary(telegramId);
+
+    if (!summary.hasEvm && !summary.hasSolana) {
+        return sendMessage(`
+${BOT_NAME} <b>💸 Withdraw</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ No wallets configured!
+Create a wallet first to withdraw.
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim(), [[{ text: '◀️ Back', callback_data: 'menu' }]]);
+    }
+
+    let withdrawInfo = '';
+    const keyboard = [];
+    if (summary.hasEvm) {
+        withdrawInfo += `
+🔷 <b>EVM Wallet (BSC/Base)</b>
+Address: <code>${summary.evmAddress}</code>
+Balance: <code>${summary.evmBalance || '0'} BNB</code> (BSC)
+Balance: <code>${summary.baseBalance || '0'} ETH</code> (Base)
+
+`;
+        keyboard.push([
+            { text: '💸 Withdraw BNB', callback_data: 'withdraw_bnb' },
+            { text: '💸 Withdraw ETH (Base)', callback_data: 'withdraw_eth' }
+        ]);
+    }
+
+    if (summary.hasSolana) {
+        withdrawInfo += `
+🟣 <b>Solana Wallet</b>
+Address: <code>${summary.solanaAddress}</code>
+Balance: <code>${summary.solBalance || '0'} SOL</code>
+
+`;
+        keyboard.push([
+            { text: '💸 Withdraw SOL', callback_data: 'withdraw_sol' }
+        ]);
+    }
+
+    const message = `
+${BOT_NAME} <b>💸 Withdraw Funds</b>
+━━━━━━━━━━━━━━━━━━━━━
+${withdrawInfo}
+<b>To withdraw:</b>
+1. Tap a withdraw button below
+2. Enter destination address when prompted
+3. Confirm the transaction
+
+⚠️ Double-check addresses!
+Crypto transactions are irreversible.
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    keyboard.push([{ text: '💼 View Wallet', callback_data: 'wallet' }]);
+    keyboard.push([{ text: '◀️ Back', callback_data: 'menu' }]);
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle gas price check
+ */
+export async function handleGas() {
+    const { getNetworkStats } = await import('../services/gasService.js');
+
+    await sendMessage('⛽ Checking network gas prices...');
+    const stats = await getNetworkStats();
+
+    const message = `
+${BOT_NAME} <b>⛽ Network Status</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+🔷 <b>BSC (BNB)</b>
+Gas Price: <code>${stats.bsc.formatted}</code>
+
+🔵 <b>Base (ETH)</b>
+Gas Price: <code>${stats.base.formatted}</code> (EIP-1559)
+
+🟣 <b>Solana</b>
+TPS: <code>${stats.solana.formatted}</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '🔄 Refresh', callback_data: 'gas' }],
+        [{ text: '◀️ Back', callback_data: 'menu' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle withdraw confirmation prompt
+ */
+export async function handleWithdrawPrompt(chain) {
+    const chainNames = {
+        'bnb': 'BNB (BSC)',
+        'eth': 'ETH (Base)',
+        'sol': 'SOL (Solana)'
+    };
+
+    const message = `
+${BOT_NAME} <b>💸 Withdraw ${chainNames[chain] || chain.toUpperCase()}</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+To withdraw, send a message with:
+<code>/send_${chain} [address] [amount]</code>
+
+Example:
+<code>/send_${chain} 0x1234... 0.1</code>
+
+⚠️ Make sure the address is correct!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, [
+        [{ text: '❌ Cancel', callback_data: 'withdraw' }]
+    ]);
 }
 
 /**
@@ -1275,11 +1433,40 @@ ${BOT_NAME} <b>Settings</b>
 }
 
 /**
- * Handle referral info
+ * Handle referral info with REAL stats
  */
 export async function handleReferral(userId) {
-    // Generate referral code from user ID
-    const refCode = `RF${userId?.toString().slice(-6) || 'XXXX'}`;
+    const telegramId = userId?.toString() || currentUserChatId?.toString();
+    const user = await getUserByTelegramId(telegramId);
+    const refCode = user?.referral_code || `RF${telegramId?.slice(-6) || 'XXXX'}`;
+
+    // Fetch real referral stats from Supabase
+    let referralCount = 0;
+    let totalEarnings = 0;
+
+    const supabase = getSupabase();
+    if (supabase && user) {
+        try {
+            // Count referrals
+            const { count } = await supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true })
+                .eq('referrer_id', user.id);
+            referralCount = count || 0;
+
+            // Get earnings
+            const { data: earnings } = await supabase
+                .from('referral_earnings')
+                .select('commission_amount')
+                .eq('user_id', user.id);
+            totalEarnings = (earnings || []).reduce((sum, e) => sum + (parseFloat(e.commission_amount) || 0), 0);
+        } catch (err) {
+            logError('Failed to fetch referral stats', err);
+        }
+    }
+
+    const botUsername = 'RedFaceTradingBot'; // Update this
+    const refLink = `https://t.me/${botUsername}?start=ref_${refCode}`;
 
     const message = `
 ${BOT_NAME} <b>Referral Program</b>
@@ -1288,12 +1475,12 @@ ${BOT_NAME} <b>Referral Program</b>
 💰 <b>Earn with Referrals!</b>
 
 Your referral link:
-<code>https://t.me/YourBotName?start=${refCode}</code>
+<code>${refLink}</code>
 
 📊 <b>Your Stats</b>
-┌ Referrals: <code>0</code>
-├ Earnings: <code>$0.00</code>
-└ Pending: <code>$0.00</code>
+┌ Referrals: <code>${referralCount}</code>
+├ Earnings: <code>$${totalEarnings.toFixed(2)}</code>
+└ Rate: <code>30%</code> of fees
 
 🎁 <b>Rewards</b>
 ┌ Earn <b>30%</b> of trading fees
@@ -1305,7 +1492,7 @@ Your referral link:
     const keyboard = [
         [
             { text: '📋 Copy Link', callback_data: 'ref_copy' },
-            { text: '📊 Stats', callback_data: 'ref_stats' }
+            { text: '📊 Earnings', callback_data: 'ref_stats' }
         ],
         [
             { text: '◀️ Back', callback_data: 'menu' }
@@ -1316,20 +1503,60 @@ Your referral link:
 }
 
 /**
- * Handle leaderboard
+ * Handle leaderboard with REAL data
  */
 export async function handleLeaderboard() {
+    let topTraders = [];
+
+    const supabase = getSupabase();
+    if (supabase) {
+        try {
+            // Get top traders by PnL (last 7 days)
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            const { data } = await supabase
+                .from('trades')
+                .select('user_id, pnl')
+                .gte('created_at', sevenDaysAgo);
+
+            if (data) {
+                // Aggregate by user
+                const userPnL = {};
+                for (const trade of data) {
+                    const uid = trade.user_id;
+                    if (!userPnL[uid]) userPnL[uid] = 0;
+                    userPnL[uid] += parseFloat(trade.pnl) || 0;
+                }
+
+                // Sort and get top 5
+                topTraders = Object.entries(userPnL)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5)
+                    .map(([id, pnl], i) => ({ rank: i + 1, id: id.slice(-6), pnl }));
+            }
+        } catch (err) {
+            logError('Failed to fetch leaderboard', err);
+        }
+    }
+
+    const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+    let leaderboardText = '';
+
+    if (topTraders.length === 0) {
+        leaderboardText = '<i>No trades yet - be the first!</i>';
+    } else {
+        leaderboardText = topTraders.map((t, i) => {
+            const sign = t.pnl >= 0 ? '+' : '';
+            return `${medals[i]} <code>Trader***${t.id}</code> — ${sign}$${t.pnl.toFixed(2)}`;
+        }).join('\n');
+    }
+
     const message = `
 ${BOT_NAME} <b>🏆 Leaderboard</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
 <b>Top Traders (7 Days)</b>
 
-🥇 <code>Trader***1</code> — +$1,234.56
-🥈 <code>Trader***2</code> — +$987.65
-🥉 <code>Trader***3</code> — +$654.32
-4. <code>Trader***4</code> — +$432.10
-5. <code>Trader***5</code> — +$321.00
+${leaderboardText}
 
 ━━━━━━━━━━━━━━━━━━━━━
 
@@ -1340,9 +1567,8 @@ ${BOT_NAME} <b>🏆 Leaderboard</b>
 
     const keyboard = [
         [
-            { text: '📅 Daily', callback_data: 'lb_daily' },
-            { text: '📆 Weekly', callback_data: 'lb_weekly' },
-            { text: '📈 All Time', callback_data: 'lb_all' }
+            { text: '🤖 Copy Traders', callback_data: 'copy' },
+            { text: '📜 My History', callback_data: 'history' }
         ],
         [
             { text: '◀️ Back', callback_data: 'menu' }
@@ -1371,6 +1597,7 @@ function getMainMenuKeyboard() {
         ],
         [
             { text: '🛠️ Tools', callback_data: 'tools' },
+            { text: '⛽ Gas', callback_data: 'gas' },
             { text: '🤖 Copy Trade', callback_data: 'copy_trade' }
         ],
         [
@@ -1382,9 +1609,15 @@ function getMainMenuKeyboard() {
 }
 
 /**
- * Handle copy trading menu
+ * Handle copy trading menu with real data
  */
 export async function handleCopyTrading(userId) {
+    const { getFollowedTraders, getCopySettings, formatCopyTradeMessage } = await import('../services/copyTradingService.js');
+
+    const following = getFollowedTraders(userId);
+    const settings = getCopySettings(userId);
+    const enabledText = settings.enabled ? '✅ ON' : '❌ OFF';
+
     const message = `
 ${BOT_NAME} <b>🤖 Copy Trading</b>
 ━━━━━━━━━━━━━━━━━━━━━
@@ -1394,12 +1627,12 @@ ${BOT_NAME} <b>🤖 Copy Trading</b>
 When you follow a trader, their trades
 are automatically copied to your wallet.
 
-📊 <b>Following:</b> 0 traders
+📊 <b>Following:</b> ${following.length}/3 traders
 
 ⚙️ <b>Settings</b>
-┌ Enabled: ✅
-├ Copy Size: 10%
-└ Max/Trade: $100
+┌ Enabled: ${enabledText}
+├ Copy Size: ${settings.amountPercent}%
+└ Max/Trade: $${settings.maxPerTrade}
 
 ━━━━━━━━━━━━━━━━━━━━━
 
@@ -1411,12 +1644,67 @@ are automatically copied to your wallet.
             { text: '🏆 Browse Traders', callback_data: 'leaderboard' }
         ],
         [
-            { text: '⚙️ Copy Settings', callback_data: 'copy_settings' },
+            { text: settings.enabled ? '🔴 Disable' : '🟢 Enable', callback_data: 'copy_toggle' },
             { text: '📊 My Following', callback_data: 'copy_following' }
         ],
         [
             { text: '◀️ Back', callback_data: 'menu' }
         ]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle trade history - show past trades
+ */
+export async function handleTradeHistory(userId) {
+    const supabase = getSupabase();
+    let trades = [];
+
+    if (supabase) {
+        try {
+            const user = await getUserByTelegramId(userId);
+            if (user) {
+                const { data } = await supabase
+                    .from('trades')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+                trades = data || [];
+            }
+        } catch (err) {
+            logError('Failed to fetch trade history', err);
+        }
+    }
+
+    let tradesDisplay = '';
+    if (trades.length === 0) {
+        tradesDisplay = '<i>No trades yet</i>';
+    } else {
+        tradesDisplay = trades.map((t, i) => {
+            const isProfit = (t.pnl || 0) >= 0;
+            const emoji = isProfit ? '🟢' : '🔴';
+            const sign = isProfit ? '+' : '';
+            const date = new Date(t.created_at).toLocaleDateString();
+            return `${i + 1}. ${emoji} ${t.token_name || 'Token'} ${sign}$${(t.pnl || 0).toFixed(2)} (${date})`;
+        }).join('\n');
+    }
+
+    const message = `
+${BOT_NAME} <b>📜 Trade History</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>Last 10 Trades:</b>
+${tradesDisplay}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '📊 PnL Summary', callback_data: 'pnl' }],
+        [{ text: '◀️ Back', callback_data: 'menu' }]
     ];
 
     return sendMessage(message, keyboard);
@@ -2186,7 +2474,12 @@ export default {
     handleAutoTradeToggle,
     handleSetAutoTradeAmount,
     notifySignalToUser,
-    notifyProfitAlert
+    notifyProfitAlert,
+    // Withdraw functions
+    handleWithdraw,
+    handleWithdrawPrompt,
+    // Trade history
+    handleTradeHistory
 };
 
 /**
@@ -2351,42 +2644,7 @@ ${plansList}
     return sendMessage(message, keyboard);
 }
 
-/**
- * Handle gas tracker
- */
-export async function handleGas() {
-    const { getGasPrices } = await import('../services/userTools.js');
-    const gas = await getGasPrices();
 
-    const message = `
-${BOT_NAME} <b>⛽ Gas Tracker</b>
-━━━━━━━━━━━━━━━━━━━━━
-
-🔷 <b>BSC</b>
-┌ 🐢 Low: ${gas.bsc.low} Gwei
-├ 🚗 Standard: ${gas.bsc.standard} Gwei
-└ 🚀 Fast: ${gas.bsc.fast} Gwei
-
-🔵 <b>Base</b>
-┌ 🐢 Low: ${gas.base.low} ETH
-├ 🚗 Standard: ${gas.base.standard} ETH
-└ 🚀 Fast: ${gas.base.fast} ETH
-
-🟣 <b>Solana</b>
-┌ 🐢 Low: ${gas.solana.low} SOL
-├ 🚗 Standard: ${gas.solana.standard} SOL
-└ 🚀 Fast: ${gas.solana.fast} SOL
-
-━━━━━━━━━━━━━━━━━━━━━
-    `.trim();
-
-    const keyboard = [
-        [{ text: '🔄 Refresh', callback_data: 'gas_refresh' }],
-        [{ text: '◀️ Back', callback_data: 'tools' }]
-    ];
-
-    return sendMessage(message, keyboard);
-}
 
 /**
  * Handle tools menu (central hub for all user tools)

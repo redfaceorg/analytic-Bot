@@ -14,13 +14,68 @@ import config from './config/index.js';
 import { displayBanner, promptProfitMultiplier, confirmStart, displayKillSwitch } from './utils/prompt.js';
 import { start, stop, getStatus } from './automation/scheduler.js';
 import { logInfo, logError } from './logging/logger.js';
-import { startTelegramBot, stopTelegramBot } from './notifications/botHandler.js';
+import { startTelegramBot, stopTelegramBot, handleUpdate } from './notifications/botHandler.js';
 import { startAllLoops, stopAllLoops } from './execution/executionLoops.js';
 import http from 'http';
 
-// Health check server for cloud deployments (Koyeb, etc.)
+/**
+ * Validate required environment variables
+ */
+function validateEnvironment() {
+    const required = ['TELEGRAM_BOT_TOKEN'];
+    const recommended = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'WALLET_ENCRYPTION_KEY'];
+    const missing = [];
+    const missingRecommended = [];
+
+    for (const envVar of required) {
+        if (!process.env[envVar]) missing.push(envVar);
+    }
+    for (const envVar of recommended) {
+        if (!process.env[envVar]) missingRecommended.push(envVar);
+    }
+
+    if (missing.length > 0) {
+        console.error('\n❌ MISSING REQUIRED ENVIRONMENT VARIABLES:');
+        missing.forEach(v => console.error(`   - ${v}`));
+        console.error('\nSet these in your .env file or deployment environment.\n');
+        process.exit(1);
+    }
+
+    if (missingRecommended.length > 0) {
+        console.warn('\n⚠️  RECOMMENDED (some features may not work):');
+        missingRecommended.forEach(v => console.warn(`   - ${v}`));
+        console.warn('');
+    }
+
+    console.log('✅ Environment validation passed\n');
+}
+
+
+// Health check & Webhook Server
 const PORT = process.env.PORT || 8000;
-const healthServer = http.createServer((req, res) => {
+const healthServer = http.createServer(async (req, res) => {
+    // Webhook Endpoint (POST /webhook)
+    if (req.method === 'POST' && (req.url === '/webhook' || req.url === '/')) {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                if (body) {
+                    const update = JSON.parse(body);
+                    await handleUpdate(update);
+                }
+                res.writeHead(200);
+                res.end('OK');
+            } catch (err) {
+                console.error('Webhook error:', err);
+                res.writeHead(500);
+                res.end('Error');
+            }
+        });
+        return;
+    }
+
+    // Health Check Endpoint (GET)
     const status = getStatus();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -46,6 +101,9 @@ let userConfig = { ...config };
  * Main function
  */
 async function main() {
+    // Validate environment before anything else
+    validateEnvironment();
+
     // Check if running in CI/cloud mode (non-interactive)
     const isNonInteractive = process.env.CI || process.env.FLY_APP_NAME || !process.stdin.isTTY;
 

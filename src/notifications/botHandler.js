@@ -44,14 +44,30 @@ import {
     // Auto-trade functions
     handleAutoTradeSettings,
     handleAutoTradeToggle,
-    handleSetAutoTradeAmount
+    handleSetAutoTradeAmount,
+    // Withdraw functions
+    handleWithdraw,
+    handleWithdrawPrompt,
+    // Trade history
+    handleTradeHistory
 } from './telegram.js';
+
+import { executeWithdrawal } from '../wallet/userWalletManager.js';
+import { updateCopySettings } from '../services/copyTradingService.js';
+import { registerErrorAlertCallback } from '../logging/logger.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let lastUpdateId = 0;
 let isPolling = false;
+
+// Register logger callback to notify admin of critical errors
+registerErrorAlertCallback((msg) => {
+    if (CHAT_ID) {
+        sendMessage(msg, [], 'HTML', CHAT_ID).catch(err => console.error('Failed to send admin alert', err));
+    }
+});
 
 /**
  * Start polling for Telegram updates
@@ -62,12 +78,18 @@ export async function startTelegramBot() {
         return;
     }
 
-    logInfo('🤖 Starting RedFace Telegram Bot...');
-    isPolling = true;
+    const mode = process.env.TELEGRAM_MODE || 'polling';
+    logInfo(`🤖 Starting RedFace Telegram Bot (Mode: ${mode})...`);
 
     // Send startup message
     await handleStart();
 
+    if (mode === 'webhook') {
+        logInfo('🚀 Webhook mode enabled. Listening for updates via HTTP server.');
+        return;
+    }
+
+    isPolling = true;
     // Start polling loop
     pollUpdates();
 }
@@ -123,7 +145,7 @@ async function getUpdates() {
 /**
  * Handle incoming update (multi-user: accepts all users)
  */
-async function handleUpdate(update) {
+export async function handleUpdate(update) {
     // Handle message
     if (update.message) {
         const message = update.message;
@@ -208,6 +230,37 @@ async function handleCommand(command, chatId, username) {
             if (command.startsWith('/broadcast ')) {
                 const msg = command.replace('/broadcast ', '').trim();
                 await handleBroadcast(msg);
+                return;
+            }
+            // Check for /send_bnb <address> <amount>
+            if (command.startsWith('/send_bnb ') || command.startsWith('/send_eth ') || command.startsWith('/send_sol ')) {
+                const parts = command.split(' ');
+                if (parts.length >= 3) {
+                    const chain = parts[0].includes('bnb') ? 'bsc' : parts[0].includes('eth') ? 'base' : 'solana';
+                    const toAddress = parts[1];
+                    const amount = parseFloat(parts[2]);
+
+                    if (isNaN(amount) || amount <= 0) {
+                        await sendMessage('❌ Invalid amount. Usage: /send_bnb <address> <amount>');
+                        return;
+                    }
+
+                    await sendMessage('⏳ Processing withdrawal...');
+                    const result = await executeWithdrawal(chatId, chain, toAddress, amount);
+
+                    if (result.success) {
+                        await sendMessage(`✅ <b>Withdrawal Successful!</b>\n\n💰 Sent: ${amount} ${chain.toUpperCase()}\n📍 To: <code>${toAddress}</code>\n🔗 TX: <code>${result.txHash}</code>`, [], 'HTML');
+                    } else {
+                        await sendMessage(`❌ Withdrawal failed: ${result.error}`);
+                    }
+                } else {
+                    await sendMessage('Usage: /send_bnb <address> <amount>\nExample: /send_bnb 0x1234... 0.1');
+                }
+                return;
+            }
+            // Check for /history command
+            if (command === '/history') {
+                await handleTradeHistory(chatId);
                 return;
             }
             await handleHelp();
@@ -338,6 +391,37 @@ async function handleCallback(query, chatId, username) {
             break;
         case 'signal_skip':
             await handleStart(); // Go back to menu
+            break;
+        // Gas callback
+        case 'gas':
+            await handleGas();
+            break;
+        // Withdraw callbacks
+        case 'withdraw':
+            await handleWithdraw();
+            break;
+        case 'withdraw_bnb':
+            await handleWithdrawPrompt('bnb');
+            break;
+        case 'withdraw_eth':
+            await handleWithdrawPrompt('eth');
+            break;
+        case 'withdraw_sol':
+            await handleWithdrawPrompt('sol');
+            break;
+        // Trade history callback
+        case 'history':
+            await handleTradeHistory(chatId);
+            break;
+        // Copy trading callbacks
+        case 'copy_toggle':
+            const settings = updateCopySettings(chatId, { enabled: undefined });
+            // Toggle the enabled state
+            updateCopySettings(chatId, { enabled: !settings.enabled });
+            await handleCopyTrading(chatId);
+            break;
+        case 'copy_following':
+            await handleCopyTrading(chatId); // Show same view with following info
             break;
         // Onboarding callbacks
         case 'onboarding_skip':

@@ -119,12 +119,32 @@ export function logWarn(message, meta = {}) {
     logger.warn(`⚠️ ${message}`, meta);
 }
 
+// Error alert callback (e.g. for Telegram admin notifications)
+let errorAlertCallback = null;
+
+/**
+ * Register a callback for error alerts
+ */
+export function registerErrorAlertCallback(callback) {
+    errorAlertCallback = callback;
+}
+
 /**
  * Log error message
  */
 export function logError(message, error = null, meta = {}) {
     const errorMeta = error ? { error: error.message, stack: error.stack, ...meta } : meta;
     logger.error(`❌ ${message}`, errorMeta);
+
+    // Trigger alert if callback registered
+    if (errorAlertCallback) {
+        try {
+            const errorMsg = error ? `\nError: ${error.message}` : '';
+            errorAlertCallback(`❌ <b>ERROR ALERT</b>\n${message}${errorMsg}`);
+        } catch (err) {
+            console.error('Failed to send error alert', err);
+        }
+    }
 }
 
 /**

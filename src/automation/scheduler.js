@@ -18,7 +18,9 @@ import { loadState, saveState, getBalance, getOpenPositions, getWatchlist, addTo
 import { executePaperBuy, executePaperSell } from '../execution/paperTrader.js';
 import { executeLiveBuy, executeLiveSell, isLiveEnabled } from '../execution/evmExecutor.js';
 import { recordPnL, displayPnLReport } from '../logging/pnlTracker.js';
-import { isTelegramEnabled, notifySignal, notifyExit, notifyStartup } from '../notifications/telegram.js';
+import { isTelegramEnabled, notifySignal, notifyExit, notifyStartup, notifySignalToUser, notifyProfitAlert } from '../notifications/telegram.js';
+import { getSupabase } from '../database/supabase.js';
+import { getAutoTradeSettings } from '../wallet/userWalletManager.js';
 
 // Main loop interval (30 seconds)
 const MAIN_LOOP_INTERVAL = 30000;
@@ -92,6 +94,72 @@ async function discoverPairs() {
 }
 
 /**
+ * Distribute signal to all users
+ * - Notifies each user via Telegram
+ * - Auto-executes for users with auto_trade_enabled
+ */
+async function distributeSignalToUsers(signal) {
+    const supabase = getSupabase();
+    if (!supabase) {
+        logWarn('Supabase not available, cannot distribute signal');
+        return;
+    }
+
+    try {
+        // Get all users
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, telegram_id, settings');
+
+        if (error || !users) {
+            logError('Failed to get users for signal distribution', error);
+            return;
+        }
+
+        logInfo(`Distributing signal to ${users.length} users...`);
+
+        for (const user of users) {
+            try {
+                const userId = user.telegram_id;
+                const settings = user.settings || {};
+                const autoTradeEnabled = settings.auto_trade_enabled || false;
+                const autoTradeAmount = settings.auto_trade_amount || 0.1;
+                const userMode = settings.mode || 'PAPER';
+
+                // Notify user of signal
+                await notifySignalToUser(signal, userId);
+
+                // If auto-trade is enabled, execute the trade
+                if (autoTradeEnabled) {
+                    logInfo(`Auto-trading for user ${userId}: ${signal.token} @ ${autoTradeAmount}`);
+
+                    const positionSize = { positionSizeUsd: autoTradeAmount * signal.entryPrice * 100 };
+
+                    if (userMode === 'LIVE' && isLiveEnabled()) {
+                        if (signal.chain === 'bsc' || signal.chain === 'base') {
+                            await executeLiveBuy(signal, positionSize);
+                        }
+                    } else {
+                        await executePaperBuy(signal, positionSize);
+                    }
+
+                    logInfo(`Auto-trade executed for user ${userId}`);
+                }
+
+                // Small delay to avoid rate limiting
+                await new Promise(r => setTimeout(r, 100));
+            } catch (userErr) {
+                logError(`Failed to notify user ${user.telegram_id}`, userErr);
+            }
+        }
+
+        logInfo('Signal distribution complete');
+    } catch (err) {
+        logError('Signal distribution error', err);
+    }
+}
+
+/**
  * Main trading loop iteration
  */
 async function mainLoopIteration() {
@@ -128,29 +196,11 @@ async function mainLoopIteration() {
             if (signal) {
                 logInfo(`🎯 Signal detected: ${signal.token} on ${signal.chain.toUpperCase()}`);
 
-                // Send Telegram notification
+                // Distribute signal to all users (notifies + auto-trades)
+                await distributeSignalToUsers(signal);
+
+                // Also keep admin notification for logging
                 notifySignal(signal).catch(() => { });
-
-                // Validate signal with risk manager
-                const balance = getBalance(signal.chain);
-                const validation = validateSignal(signal, balance);
-
-                if (!validation.valid) {
-                    logWarn(`Signal rejected: ${validation.reason}`);
-                    continue;
-                }
-
-                // Execute trade (paper or live)
-                if (config.mode === 'PAPER' || config.mode === 'READ_ONLY') {
-                    await executePaperTrade(signal, validation.position);
-                } else if (config.mode === 'LIVE' && config.enableLiveTrading) {
-                    // Live trading (EVM chains only for now)
-                    if (signal.chain === 'bsc' || signal.chain === 'base') {
-                        await executeLiveBuy(signal, validation.position);
-                    } else {
-                        logWarn(`Live trading not supported on ${signal.chain} yet`);
-                    }
-                }
             }
         } catch (err) {
             logError(`Error processing ${item.symbol}`, err);
@@ -199,6 +249,40 @@ async function positionLoopIteration() {
 
             if (!snapshot) {
                 continue;
+            }
+
+            const currentPrice = snapshot.price.usd;
+            const profitPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+
+            // Check for profit alert thresholds (25%, 50%, 100%)
+            // Only send alert if profitable and threshold met
+            if (profitPercent > 0) {
+                const alertThresholds = [25, 50, 100];
+                const alertedKey = `alerted_${position.id}`;
+
+                for (const threshold of alertThresholds) {
+                    if (profitPercent >= threshold) {
+                        // Check if we already sent this alert (use position metadata or simple flag)
+                        if (!position[alertedKey + threshold]) {
+                            logInfo(`📈 Profit alert: ${position.token} is up ${profitPercent.toFixed(1)}%`);
+
+                            // Send profit alert to user
+                            const enrichedPosition = {
+                                ...position,
+                                currentPrice,
+                                profitPercent
+                            };
+
+                            // Get position owner (if available)
+                            if (position.userId || position.user_id) {
+                                await notifyProfitAlert(enrichedPosition, profitPercent, position.userId || position.user_id);
+                            }
+
+                            // Mark as alerted (simple in-memory for now)
+                            position[alertedKey + threshold] = true;
+                        }
+                    }
+                }
             }
 
             // Check exit conditions

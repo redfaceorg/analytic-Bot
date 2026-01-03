@@ -417,7 +417,7 @@ export async function getWalletForTrading(telegramId, chain) {
 }
 
 /**
- * Get user wallet summary for display
+ * Get user wallet summary for display with REAL balances
  */
 export async function getWalletSummary(telegramId) {
     const wallets = await getUserWallets(telegramId);
@@ -426,11 +426,53 @@ export async function getWalletSummary(telegramId) {
     const evmWallet = wallets.find(w => w.chain === 'evm');
     const solWallet = wallets.find(w => w.chain === 'solana');
 
+    let evmBalance = '0';
+    let baseBalance = '0';
+    let solBalance = '0';
+
+    // Fetch real EVM balances (BSC and Base)
+    if (evmWallet?.address) {
+        try {
+            const { ethers } = await import('ethers');
+
+            // BSC Balance
+            const bscRpc = process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
+            const bscProvider = new ethers.JsonRpcProvider(bscRpc);
+            const bscBal = await bscProvider.getBalance(evmWallet.address);
+            evmBalance = ethers.formatEther(bscBal);
+
+            // Base Balance
+            const baseRpc = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+            const baseProvider = new ethers.JsonRpcProvider(baseRpc);
+            const baseBal = await baseProvider.getBalance(evmWallet.address);
+            baseBalance = ethers.formatEther(baseBal);
+        } catch (err) {
+            logError('Failed to fetch EVM balances', err);
+        }
+    }
+
+    // Fetch real Solana balance
+    if (solWallet?.address) {
+        try {
+            const { Connection, PublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
+            const solRpc = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+            const connection = new Connection(solRpc);
+            const pubkey = new PublicKey(solWallet.address);
+            const balance = await connection.getBalance(pubkey);
+            solBalance = (balance / LAMPORTS_PER_SOL).toFixed(6);
+        } catch (err) {
+            logError('Failed to fetch Solana balance', err);
+        }
+    }
+
     return {
         hasEvm: !!evmWallet,
         hasSolana: !!solWallet,
-        evmAddress: evmWallet?.address || null,
+        evmAddress: evmWallet?.address || null, // Same address for BSC and Base
         solanaAddress: solWallet?.address || null,
+        evmBalance, // BSC (BNB)
+        baseBalance, // Base (ETH)
+        solBalance, // Solana (SOL)
         mode: user?.settings?.mode || 'PAPER',
         username: user?.username || null
     };
@@ -526,5 +568,83 @@ export default {
     markOnboardingComplete,
     getAutoTradeSettings,
     updateAutoTradeSettings,
-    toggleAutoTrade
+    toggleAutoTrade,
+    executeWithdrawal
 };
+
+/**
+ * Execute withdrawal - send funds to external address
+ * @param {string} telegramId - User's Telegram ID
+ * @param {string} chain - 'bsc', 'base', or 'solana'
+ * @param {string} toAddress - Destination address
+ * @param {number} amount - Amount to send (in native token)
+ */
+export async function executeWithdrawal(telegramId, chain, toAddress, amount) {
+    try {
+        logInfo(`Withdrawal request: ${amount} on ${chain} to ${toAddress}`);
+
+        // Get user's wallet
+        const walletType = chain === 'solana' ? 'solana' : 'evm';
+        const wallet = await getUserWallet(telegramId, walletType);
+
+        if (!wallet || !wallet.encrypted_key) {
+            return { success: false, error: 'No wallet found' };
+        }
+
+        const privateKey = decryptKey(wallet.encrypted_key);
+
+        if (chain === 'solana') {
+            // Solana withdrawal
+            const { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
+            const bs58Module = await import('bs58');
+
+            const solRpc = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+            const connection = new Connection(solRpc, 'confirmed');
+
+            const secretKey = bs58Module.default.decode(privateKey);
+            const keypair = Keypair.fromSecretKey(secretKey);
+
+            const lamports = Math.floor(amount * LAMPORTS_PER_SOL);
+            const toPubkey = new PublicKey(toAddress);
+
+            const transaction = new Transaction().add(
+                SystemProgram.transfer({
+                    fromPubkey: keypair.publicKey,
+                    toPubkey,
+                    lamports
+                })
+            );
+
+            const signature = await connection.sendTransaction(transaction, [keypair]);
+            await connection.confirmTransaction(signature, 'confirmed');
+
+            logInfo(`Solana withdrawal complete: ${signature}`);
+            return { success: true, txHash: signature, chain: 'solana' };
+
+        } else {
+            // EVM withdrawal (BSC or Base)
+            const { ethers } = await import('ethers');
+
+            const rpcUrls = {
+                bsc: process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org',
+                base: process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+            };
+
+            const provider = new ethers.JsonRpcProvider(rpcUrls[chain] || rpcUrls.bsc);
+            const signer = new ethers.Wallet(privateKey, provider);
+
+            const tx = await signer.sendTransaction({
+                to: toAddress,
+                value: ethers.parseEther(amount.toString())
+            });
+
+            const receipt = await tx.wait();
+
+            logInfo(`EVM withdrawal complete: ${tx.hash}`);
+            return { success: true, txHash: tx.hash, chain };
+        }
+    } catch (err) {
+        logError('Withdrawal failed', err);
+        return { success: false, error: err.message };
+    }
+}
