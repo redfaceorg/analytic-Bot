@@ -83,6 +83,9 @@ export async function startTelegramBot() {
     const mode = process.env.TELEGRAM_MODE || 'polling';
     logInfo(`🤖 Starting RedFace Telegram Bot (Mode: ${mode})...`);
 
+    // Register bot commands for Telegram menu
+    await registerBotCommands();
+
     // Send startup message
     await handleStart();
 
@@ -94,6 +97,36 @@ export async function startTelegramBot() {
     isPolling = true;
     // Start polling loop
     pollUpdates();
+}
+
+/**
+ * Register bot commands with Telegram (appears in menu)
+ */
+async function registerBotCommands() {
+    const commands = [
+        { command: 'start', description: '🏠 Main Dashboard' },
+        { command: 'wallet', description: '💼 Wallet & Balance' },
+        { command: 'positions', description: '📊 Open Positions' },
+        { command: 'pnl', description: '💰 Profit & Loss' },
+        { command: 'token', description: '🔍 Analyze Token' },
+        { command: 'referral', description: '🔗 Referral Program' },
+        { command: 'settings', description: '⚙️ Settings' },
+        { command: 'help', description: '❓ Help' }
+    ];
+
+    try {
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setMyCommands`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commands })
+        });
+
+        if (response.ok) {
+            logInfo('✅ Bot commands registered successfully');
+        }
+    } catch (err) {
+        logError('Failed to register bot commands', err);
+    }
 }
 
 /**
