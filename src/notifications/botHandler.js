@@ -13,6 +13,7 @@ import {
     handlePnL,
     handleHelp,
     handleWallet,
+    handleDeposit,
     handleCreateEvmWallet,
     handleCreateSolanaWallet,
     handleToggleMode,
@@ -30,7 +31,16 @@ import {
     handlePortfolio,
     handleDCA,
     handleGas,
-    handleTools
+    handleTools,
+    // Onboarding functions
+    handleOnboarding,
+    skipOnboarding,
+    // Admin functions
+    handleAdmin,
+    handleAdminUsers,
+    handleAdminStats,
+    handleBroadcastPrompt,
+    handleBroadcast
 } from './telegram.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -182,7 +192,20 @@ async function handleCommand(command, chatId, username) {
         case '/help':
             await handleHelp();
             break;
+        // Admin commands
+        case '/admin':
+            await handleAdmin();
+            break;
+        case '/users':
+            await handleAdminUsers();
+            break;
         default:
+            // Check for /broadcast <message>
+            if (command.startsWith('/broadcast ')) {
+                const msg = command.replace('/broadcast ', '').trim();
+                await handleBroadcast(msg);
+                return;
+            }
             await handleHelp();
     }
 }
@@ -220,6 +243,10 @@ async function handleCallback(query, chatId, username) {
             break;
         case 'signals':
             await handleStart();
+            break;
+        // Deposit callback
+        case 'deposit':
+            await handleDeposit();
             break;
         // New feature callbacks
         case 'token_prompt':
@@ -285,7 +312,33 @@ async function handleCallback(query, chatId, username) {
             // Show import instructions
             await handleWallet();
             break;
+        // Admin callbacks
+        case 'admin':
+            await handleAdmin();
+            break;
+        case 'admin_users':
+            await handleAdminUsers();
+            break;
+        case 'admin_stats':
+            await handleAdminStats();
+            break;
+        case 'admin_broadcast':
+            await handleBroadcastPrompt();
+            break;
+        // Onboarding callbacks
+        case 'onboarding_skip':
+            await skipOnboarding();
+            break;
         default:
+            // Check for onboarding navigation callbacks (onboarding_next_2, etc.)
+            if (action.startsWith('onboarding_next_')) {
+                const step = parseInt(action.replace('onboarding_next_', ''));
+                if (!isNaN(step) && step >= 1 && step <= 5) {
+                    await handleOnboarding(step);
+                    return;
+                }
+            }
+
             // Check for buy callbacks
             if (action.startsWith('buy_') && !action.startsWith('buy_custom')) {
                 // Parse buy callback: buy_chain_amount_signalId

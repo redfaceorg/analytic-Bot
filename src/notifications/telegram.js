@@ -19,7 +19,9 @@ import {
     toggleTradingMode,
     getUserMode,
     getUserWallet,
-    getWalletForTrading
+    getWalletForTrading,
+    hasCompletedOnboarding,
+    markOnboardingComplete
 } from '../wallet/userWalletManager.js';
 import config from '../config/index.js';
 
@@ -100,6 +102,14 @@ export function setCurrentUser(chatId) {
  */
 export function getCurrentUserChatId() {
     return currentUserChatId || CHAT_ID;
+}
+
+/**
+ * Check if current user is admin (defined by TELEGRAM_CHAT_ID env var)
+ */
+export function isAdmin() {
+    if (!CHAT_ID) return false;
+    return currentUserChatId?.toString() === CHAT_ID?.toString();
 }
 
 /**
@@ -427,6 +437,20 @@ function formatNumber(num) {
  * Handle /start command
  */
 export async function handleStart() {
+    const telegramId = currentUserChatId?.toString();
+
+    // Get or create user
+    if (telegramId) {
+        await getOrCreateUser(telegramId);
+
+        // Check if new user needs onboarding
+        const completedOnboarding = await hasCompletedOnboarding(telegramId);
+        if (!completedOnboarding) {
+            return showOnboardingWelcome();
+        }
+    }
+
+    // Returning user - show normal status
     const status = getStatus();
     const pnl = getPnLSummary();
 
@@ -655,6 +679,86 @@ ${walletList}
     `.trim();
 
     return sendMessage(message, getWalletKeyboard(summary.hasEvm, summary.hasSolana));
+}
+
+/**
+ * Handle /deposit command - Show wallet addresses for depositing funds
+ */
+export async function handleDeposit() {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    const summary = await getWalletSummary(telegramId);
+
+    // Check if user has any wallets
+    if (!summary.hasEvm && !summary.hasSolana) {
+        const message = `
+${BOT_NAME} <b>💰 Deposit</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ <b>No wallets configured!</b>
+
+Create a wallet first to get deposit addresses:
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim();
+
+        return sendMessage(message, [
+            [
+                { text: '🆕 Create EVM Wallet', callback_data: 'wallet_create_evm' },
+                { text: '🆕 Create Solana', callback_data: 'wallet_create_sol' }
+            ],
+            [{ text: '◀️ Back', callback_data: 'menu' }]
+        ]);
+    }
+
+    let depositInfo = '';
+
+    if (summary.hasEvm) {
+        depositInfo += `
+🔷 <b>BSC (BNB) Deposit</b>
+Send <b>BNB</b> to:
+<code>${summary.evmAddress}</code>
+⚠️ Network: BNB Smart Chain (BEP20)
+
+🔵 <b>Base (ETH) Deposit</b>
+Send <b>ETH</b> to:
+<code>${summary.evmAddress}</code>
+⚠️ Network: Base
+
+`;
+    }
+
+    if (summary.hasSolana) {
+        depositInfo += `
+🟣 <b>Solana (SOL) Deposit</b>
+Send <b>SOL</b> to:
+<code>${summary.solanaAddress}</code>
+⚠️ Network: Solana
+`;
+    }
+
+    const message = `
+${BOT_NAME} <b>💰 Deposit Funds</b>
+━━━━━━━━━━━━━━━━━━━━━
+${depositInfo}
+⚠️ <b>IMPORTANT:</b>
+• Only send the correct token to each address
+• Double-check the network before sending
+• Deposits may take a few minutes to confirm
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '💼 View Wallet', callback_data: 'wallet' }],
+        [{ text: '🔄 Refresh Balances', callback_data: 'wallet_balance' }],
+        [{ text: '◀️ Menu', callback_data: 'menu' }]
+    ];
+
+    return sendMessage(message, keyboard);
 }
 
 /**
@@ -933,59 +1037,164 @@ ${BOT_NAME} <b>🔴 LIVE Trade Executed!</b>
 }
 
 /**
- * Handle /token command - Get token info and safety check
+ * Handle /token command - Get token info and safety check with DANGER warnings
  */
 export async function handleToken(tokenAddress) {
     try {
         if (!tokenAddress || tokenAddress.length < 20) {
             return sendMessage(`
-${BOT_NAME} <b>Token Scanner</b>
+${BOT_NAME} <b>🔍 Token Scanner</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-Usage: <code>/token &lt;address&gt;</code>
+Paste any contract address to analyze:
+• Token info & price
+• Liquidity & volume
+• 🚨 Honeypot detection
+• ⚠️ Risk assessment
 
-Example:
-<code>/token 0x...</code> (for BSC/Base)
+<b>Usage:</b>
+<code>/token 0x...</code> (BSC/Base)
+<code>/token So1...</code> (Solana)
 
 ━━━━━━━━━━━━━━━━━━━━━
-            `.trim());
+            `.trim(), [[{ text: '◀️ Menu', callback_data: 'menu' }]]);
         }
 
-        await sendMessage('🔍 Scanning token...');
+        await sendMessage('🔍 Analyzing contract...');
 
         // Import analyzer
-        const { analyzeToken, formatTokenMessage } = await import('../analysis/tokenAnalyzer.js');
+        const { analyzeToken, getSafetyEmoji } = await import('../analysis/tokenAnalyzer.js');
 
         // Detect chain from address format
-        const chain = tokenAddress.startsWith('0x') ? 'bsc' : 'solana';
+        let chain = 'bsc';
+        if (tokenAddress.startsWith('0x')) {
+            // Could be BSC or Base - default to BSC, user can specify
+            chain = 'bsc';
+        } else {
+            chain = 'solana';
+        }
 
         const analysis = await analyzeToken(chain, tokenAddress);
-        const message = formatTokenMessage(analysis);
+
+        if (!analysis.success) {
+            return sendMessage(`❌ ${analysis.error}`, [[{ text: '◀️ Menu', callback_data: 'menu' }]]);
+        }
+
+        const t = analysis.token;
+        const s = analysis.safety;
+        const safetyEmoji = getSafetyEmoji(s.riskLevel);
+        const priceChangeColor = t.priceChange.h24 >= 0 ? '🟢' : '🔴';
+        const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
+
+        // Build danger warning based on risk level
+        let dangerWarning = '';
+        if (s.isHoneypot) {
+            dangerWarning = `
+🚨🚨🚨 <b>HONEYPOT DETECTED</b> 🚨🚨🚨
+⛔ DO NOT BUY - YOU CANNOT SELL!
+Reason: ${s.reason || 'Sell function blocked'}
+━━━━━━━━━━━━━━━━━━━━━
+`;
+        } else if (s.riskLevel === 'SCAM' || s.riskLevel === 'EXTREME') {
+            dangerWarning = `
+⛔⛔⛔ <b>EXTREME DANGER</b> ⛔⛔⛔
+High probability of SCAM!
+• Sell Tax: ${s.sellTax || 0}%
+━━━━━━━━━━━━━━━━━━━━━
+`;
+        } else if (s.riskLevel === 'HIGH') {
+            dangerWarning = `
+🔴 <b>HIGH RISK TOKEN</b>
+Trade with extreme caution!
+━━━━━━━━━━━━━━━━━━━━━
+`;
+        } else if (s.riskLevel === 'MEDIUM') {
+            dangerWarning = `
+🟡 <b>MEDIUM RISK</b> - Proceed with caution
+━━━━━━━━━━━━━━━━━━━━━
+`;
+        }
+
+        const message = `
+${BOT_NAME} <b>🔍 Token Analysis</b>
+━━━━━━━━━━━━━━━━━━━━━
+${dangerWarning}
+🪙 <b>${t.name}</b> (${t.symbol})
+🔗 Chain: <code>${t.chain.toUpperCase()}</code>
+
+💰 <b>Price:</b> <code>$${t.price.toFixed(8)}</code>
+
+📈 <b>Price Change</b>
+┌ 5m: <code>${t.priceChange.m5 >= 0 ? '+' : ''}${t.priceChange.m5}%</code>
+├ 1h: <code>${t.priceChange.h1 >= 0 ? '+' : ''}${t.priceChange.h1}%</code>
+└ 24h: ${priceChangeColor} <code>${t.priceChange.h24 >= 0 ? '+' : ''}${t.priceChange.h24}%</code>
+
+📊 <b>Market Info</b>
+┌ Volume 24h: <code>$${formatLargeNumber(t.volume24h)}</code>
+├ Liquidity: <code>$${formatLargeNumber(t.liquidity)}</code>
+├ Market Cap: <code>$${formatLargeNumber(t.marketCap)}</code>
+└ Trades 24h: <code>${t.txns24h.buys + t.txns24h.sells}</code> (📈${t.txns24h.buys} / 📉${t.txns24h.sells})
+
+${safetyEmoji} <b>Safety: ${s.riskLevel || 'UNKNOWN'}</b>
+┌ Honeypot: <code>${s.isHoneypot === null ? '❓ Unknown' : s.isHoneypot ? '🚨 YES!' : '✅ No'}</code>
+├ Buy Tax: <code>${s.buyTax || 0}%</code>
+├ Sell Tax: <code>${s.sellTax || 0}%</code>
+├ Open Source: <code>${s.isOpenSource ? '✅' : '❌'}</code>
+└ Holders: <code>${s.holderCount || 'N/A'}</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim();
 
         const keyboard = [];
 
-        if (analysis.success) {
-            keyboard.push([
-                { text: '📊 Chart', url: `https://dexscreener.com/${chain}/${analysis.token.pairAddress}` }
-            ]);
+        // Always show chart
+        keyboard.push([
+            { text: '📊 View Chart', url: `https://dexscreener.com/${chain}/${t.pairAddress}` }
+        ]);
 
-            // Add buy buttons if not a honeypot
-            if (!analysis.safety.isHoneypot) {
-                const nativeSymbol = chain === 'bsc' ? 'BNB' : chain === 'base' ? 'ETH' : 'SOL';
+        // Only show buy buttons if NOT a honeypot and risk is acceptable
+        if (!s.isHoneypot && s.riskLevel !== 'SCAM' && s.riskLevel !== 'EXTREME') {
+            if (s.riskLevel === 'HIGH') {
+                keyboard.push([
+                    { text: `⚠️ Buy 0.05 ${nativeSymbol} (RISKY)`, callback_data: `quickbuy_${chain}_0.05_${tokenAddress}` }
+                ]);
+            } else {
                 keyboard.push([
                     { text: `🟢 Buy 0.1 ${nativeSymbol}`, callback_data: `quickbuy_${chain}_0.1_${tokenAddress}` },
                     { text: `🟢 Buy 0.5 ${nativeSymbol}`, callback_data: `quickbuy_${chain}_0.5_${tokenAddress}` }
                 ]);
+                keyboard.push([
+                    { text: `💰 Buy 1 ${nativeSymbol}`, callback_data: `quickbuy_${chain}_1_${tokenAddress}` }
+                ]);
             }
+        } else if (s.isHoneypot) {
+            // Explicit warning - no buy buttons
+            keyboard.push([
+                { text: '🚨 HONEYPOT - CANNOT BUY', callback_data: 'menu' }
+            ]);
         }
 
+        keyboard.push([
+            { text: '⭐ Add to Watchlist', callback_data: `watchlist_add_${tokenAddress}` }
+        ]);
         keyboard.push([{ text: '◀️ Menu', callback_data: 'menu' }]);
 
         return sendMessage(message, keyboard);
     } catch (err) {
         logError('Token command error', err);
-        return sendMessage('❌ Failed to analyze token');
+        return sendMessage('❌ Failed to analyze token. Please check the address and try again.');
     }
+}
+
+/**
+ * Format large numbers for display
+ */
+function formatLargeNumber(num) {
+    if (!num) return '0';
+    if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
+    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
+    return num.toFixed(2);
 }
 
 /**
@@ -1147,21 +1356,22 @@ function getMainMenuKeyboard() {
             { text: '💼 Positions', callback_data: 'positions' }
         ],
         [
-            { text: '💰 Wallet', callback_data: 'wallet' },
-            { text: '📈 PnL', callback_data: 'pnl' }
+            { text: '💰 Deposit', callback_data: 'deposit' },
+            { text: '💼 Wallet', callback_data: 'wallet' }
         ],
         [
             { text: '🔍 Token', callback_data: 'token_prompt' },
-            { text: '🛠️ Tools', callback_data: 'tools' }
+            { text: '📈 PnL', callback_data: 'pnl' }
         ],
         [
-            { text: '👥 Referral', callback_data: 'referral' },
+            { text: '🛠️ Tools', callback_data: 'tools' },
             { text: '🤖 Copy Trade', callback_data: 'copy_trade' }
         ],
         [
-            { text: '⚙️ Settings', callback_data: 'settings' },
-            { text: '🔄 Refresh', callback_data: 'refresh' }
-        ]
+            { text: '👥 Referral', callback_data: 'referral' },
+            { text: '⚙️ Settings', callback_data: 'settings' }
+        ],
+        [{ text: '🔄 Refresh', callback_data: 'refresh' }]
     ];
 }
 
@@ -1206,6 +1416,543 @@ are automatically copied to your wallet.
     return sendMessage(message, keyboard);
 }
 
+// ==================== ONBOARDING SYSTEM ====================
+
+/**
+ * Onboarding Step 1 - Welcome & Overview
+ */
+export async function showOnboardingWelcome() {
+    const message = `
+${BOT_NAME} <b>Welcome! 🎉</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+👋 <b>Welcome to RedFace Trading Bot!</b>
+
+I'm your autonomous multi-chain trading assistant, designed to help you catch profitable opportunities on:
+
+🔷 <b>BSC</b> (PancakeSwap)
+🔵 <b>Base</b> (Aerodrome)
+🟣 <b>Solana</b> (Raydium)
+
+<b>What I can do:</b>
+• 📊 Detect volume spike opportunities
+• 💰 Execute trades (paper or live)
+• 🔔 Send real-time alerts
+• 📈 Track your portfolio & PnL
+
+Let me give you a quick tour!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: "🚀 Let's Start!", callback_data: 'onboarding_next_2' }],
+        [{ text: '⏭️ Skip Guide', callback_data: 'onboarding_skip' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Onboarding Step 2 - Wallet Setup
+ */
+export async function showOnboardingWallet() {
+    const message = `
+${BOT_NAME} <b>Step 2: Wallet Setup 💼</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+To trade, you'll need a wallet. I support:
+
+🔷 <b>EVM Wallets</b> (BSC & Base)
+• Create a new wallet
+• Or import your existing one
+
+🟣 <b>Solana Wallets</b>
+• Create a new wallet
+• Or import your existing one
+
+<b>🔐 Security:</b>
+Your private keys are encrypted and stored securely. Only you can access them.
+
+<i>💡 Tip: Start with Paper Mode to practice without real funds!</i>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '🆕 Create EVM Wallet', callback_data: 'wallet_create_evm' },
+            { text: '🆕 Create Solana', callback_data: 'wallet_create_sol' }
+        ],
+        [{ text: '➡️ Next Step', callback_data: 'onboarding_next_3' }],
+        [{ text: '⏭️ Skip Guide', callback_data: 'onboarding_skip' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Onboarding Step 3 - Trading Modes
+ */
+export async function showOnboardingTrading() {
+    const message = `
+${BOT_NAME} <b>Step 3: Trading Modes 📊</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>📝 PAPER Mode</b> (Default)
+• Practice with virtual funds
+• No real money at risk
+• Perfect for learning!
+
+<b>🔴 LIVE Mode</b>
+• Trade with real funds
+• Requires funded wallet
+• Real profits (and losses)
+
+<b>🎯 My Strategy: Volume Spike Scalping</b>
+I detect tokens with sudden volume increases (3x+) and price momentum, then execute quick trades targeting ${config.takeProfit?.multiplier || 5}x profit.
+
+<b>⚙️ Risk Settings:</b>
+• Take Profit: ${config.takeProfit?.multiplier || 5}x
+• Stop Loss: ${config.risk?.stopLossPercent || 5}%
+• Max Hold: 30 minutes
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '➡️ Next Step', callback_data: 'onboarding_next_4' }],
+        [{ text: '⏭️ Skip Guide', callback_data: 'onboarding_skip' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Onboarding Step 4 - Key Features
+ */
+export async function showOnboardingFeatures() {
+    const message = `
+${BOT_NAME} <b>Step 4: Key Features 🛠️</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>📊 Positions</b>
+Track all your open trades with live PnL
+
+<b>🔍 Token Scanner</b>
+Analyze any token: <code>/token 0x...</code>
+Get safety scores, liquidity info, and more
+
+<b>🔔 Price Alerts</b>
+Set alerts for price targets
+
+<b>⭐ Watchlist</b>
+Save tokens to monitor
+
+<b>📅 DCA Plans</b>
+Auto-buy on daily/weekly schedules
+
+<b>🤖 Copy Trading</b>
+Automatically copy top traders
+
+<b>👥 Referral Program</b>
+Earn 30% of trading fees from referrals!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '➡️ Finish Setup', callback_data: 'onboarding_next_5' }],
+        [{ text: '⏭️ Skip Guide', callback_data: 'onboarding_skip' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Onboarding Step 5 - Completion
+ */
+export async function showOnboardingComplete() {
+    const telegramId = currentUserChatId?.toString();
+
+    // Mark onboarding as complete
+    if (telegramId) {
+        await markOnboardingComplete(telegramId);
+    }
+
+    const message = `
+${BOT_NAME} <b>You're All Set! 🎉</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ <b>Onboarding Complete!</b>
+
+<b>📋 All Commands:</b>
+/start - Main menu & status
+/wallet - Manage wallets
+/positions - View open trades
+/pnl - Performance report
+/settings - Bot settings
+/token &lt;address&gt; - Analyze any token
+/referral - Your referral link
+/leaderboard - Top traders
+/help - Full help guide
+
+<b>💡 Pro Tips:</b>
+• Start in Paper Mode to practice
+• Use /token to check tokens before buying
+• Set price alerts for key levels
+• Enable DCA for consistent investing
+
+<b>🚀 Ready to catch some gains?</b>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '🚀 Start Trading!', callback_data: 'menu' }],
+        [{ text: '💼 Setup Wallet', callback_data: 'wallet' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Skip onboarding and go to main menu
+ */
+export async function skipOnboarding() {
+    const telegramId = currentUserChatId?.toString();
+
+    // Mark onboarding as complete
+    if (telegramId) {
+        await markOnboardingComplete(telegramId);
+    }
+
+    // Show main status menu
+    const status = getStatus();
+    const pnl = getPnLSummary();
+
+    const fullStatus = {
+        ...status,
+        isRunning: true,
+        mode: config.mode,
+        balance: getBalance('bsc') + getBalance('base') + getBalance('solana'),
+        dailyPnl: pnl.todayPnl || 0,
+        dailyTrades: pnl.todayTrades || 0,
+        winRate: pnl.winRate || 0,
+        uptime: process.uptime()
+    };
+
+    return notifyStatus(fullStatus);
+}
+
+/**
+ * Handle onboarding step navigation
+ */
+export async function handleOnboarding(step) {
+    switch (step) {
+        case 1:
+            return showOnboardingWelcome();
+        case 2:
+            return showOnboardingWallet();
+        case 3:
+            return showOnboardingTrading();
+        case 4:
+            return showOnboardingFeatures();
+        case 5:
+            return showOnboardingComplete();
+        default:
+            return showOnboardingWelcome();
+    }
+}
+
+// ==================== ADMIN COMMANDS ====================
+
+/**
+ * Handle /admin command - Admin Dashboard
+ */
+export async function handleAdmin() {
+    if (!isAdmin()) {
+        return sendMessage('❌ <b>Access Denied</b>\n\nThis command is only available to admins.');
+    }
+
+    const supabase = (await import('../database/supabase.js')).getSupabase();
+
+    let totalUsers = 0;
+    let todayUsers = 0;
+    let totalTrades = 0;
+
+    if (supabase) {
+        try {
+            const { count: userCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
+            totalUsers = userCount || 0;
+
+            const today = new Date().toISOString().split('T')[0];
+            const { count: newCount } = await supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true })
+                .gte('created_at', today);
+            todayUsers = newCount || 0;
+
+            const { count: tradeCount } = await supabase.from('trades').select('*', { count: 'exact', head: true });
+            totalTrades = tradeCount || 0;
+        } catch (err) {
+            logError('Admin stats error', err);
+        }
+    }
+
+    const message = `
+${BOT_NAME} <b>🔐 Admin Dashboard</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+👥 <b>Users</b>
+┌ Total: <code>${totalUsers}</code>
+└ Today: <code>${todayUsers}</code>
+
+📊 <b>Trading</b>
+┌ Total Trades: <code>${totalTrades}</code>
+├ Mode: <code>${config.mode}</code>
+└ Uptime: <code>${formatUptime(process.uptime())}</code>
+
+⚙️ <b>Bot Status</b>
+┌ Version: <code>${BOT_VERSION}</code>
+└ Status: 🟢 Running
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: '👥 Users', callback_data: 'admin_users' },
+            { text: '📊 Stats', callback_data: 'admin_stats' }
+        ],
+        [
+            { text: '📢 Broadcast', callback_data: 'admin_broadcast' },
+            { text: '🔄 Refresh', callback_data: 'admin' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'menu' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle admin users list
+ */
+export async function handleAdminUsers() {
+    if (!isAdmin()) {
+        return sendMessage('❌ <b>Access Denied</b>\n\nThis command is only available to admins.');
+    }
+
+    const supabase = (await import('../database/supabase.js')).getSupabase();
+
+    let usersList = '<i>No users yet</i>';
+    let totalUsers = 0;
+
+    if (supabase) {
+        try {
+            const { data: users, count } = await supabase
+                .from('users')
+                .select('telegram_id, username, created_at, settings', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            totalUsers = count || 0;
+
+            if (users && users.length > 0) {
+                usersList = users.map((u, i) => {
+                    const mode = u.settings?.mode || 'PAPER';
+                    const modeIcon = mode === 'LIVE' ? '🔴' : '📝';
+                    const date = new Date(u.created_at).toLocaleDateString();
+                    return `${i + 1}. ${modeIcon} <code>${u.username || u.telegram_id}</code> - ${date}`;
+                }).join('\n');
+            }
+        } catch (err) {
+            logError('Admin users error', err);
+        }
+    }
+
+    const message = `
+${BOT_NAME} <b>👥 User List</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Total: <code>${totalUsers}</code> users
+
+<b>Recent Users (Last 10):</b>
+${usersList}
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '◀️ Back', callback_data: 'admin' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle admin stats
+ */
+export async function handleAdminStats() {
+    if (!isAdmin()) {
+        return sendMessage('❌ <b>Access Denied</b>\n\nThis command is only available to admins.');
+    }
+
+    const supabase = (await import('../database/supabase.js')).getSupabase();
+
+    let stats = {
+        totalTrades: 0,
+        buyCount: 0,
+        sellCount: 0,
+        totalVolume: 0,
+        totalPnl: 0,
+        dcaPlans: 0,
+        alerts: 0
+    };
+
+    if (supabase) {
+        try {
+            const { count: tradeCount } = await supabase.from('trades').select('*', { count: 'exact', head: true });
+            stats.totalTrades = tradeCount || 0;
+
+            const { count: buyCount } = await supabase.from('trades').select('*', { count: 'exact', head: true }).eq('action', 'BUY');
+            stats.buyCount = buyCount || 0;
+
+            const { count: sellCount } = await supabase.from('trades').select('*', { count: 'exact', head: true }).eq('action', 'SELL');
+            stats.sellCount = sellCount || 0;
+
+            const { data: volumeData } = await supabase.from('trades').select('amount_usd');
+            if (volumeData) {
+                stats.totalVolume = volumeData.reduce((sum, t) => sum + (parseFloat(t.amount_usd) || 0), 0);
+            }
+
+            const { data: pnlData } = await supabase.from('trades').select('pnl');
+            if (pnlData) {
+                stats.totalPnl = pnlData.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0);
+            }
+
+            const { count: dcaCount } = await supabase.from('dca_plans').select('*', { count: 'exact', head: true });
+            stats.dcaPlans = dcaCount || 0;
+
+            const { count: alertCount } = await supabase.from('price_alerts').select('*', { count: 'exact', head: true });
+            stats.alerts = alertCount || 0;
+        } catch (err) {
+            logError('Admin stats error', err);
+        }
+    }
+
+    const pnlEmoji = stats.totalPnl >= 0 ? '🟢' : '🔴';
+
+    const message = `
+${BOT_NAME} <b>📊 Trading Statistics</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+📈 <b>Trades</b>
+┌ Total: <code>${stats.totalTrades}</code>
+├ Buys: <code>${stats.buyCount}</code>
+└ Sells: <code>${stats.sellCount}</code>
+
+💰 <b>Volume & PnL</b>
+┌ Volume: <code>$${stats.totalVolume.toFixed(2)}</code>
+└ ${pnlEmoji} PnL: <code>${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}</code>
+
+⚙️ <b>Features</b>
+┌ DCA Plans: <code>${stats.dcaPlans}</code>
+└ Alerts: <code>${stats.alerts}</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    const keyboard = [
+        [{ text: '🔄 Refresh', callback_data: 'admin_stats' }],
+        [{ text: '◀️ Back', callback_data: 'admin' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle broadcast message prompt
+ */
+export async function handleBroadcastPrompt() {
+    if (!isAdmin()) {
+        return sendMessage('❌ <b>Access Denied</b>\n\nThis command is only available to admins.');
+    }
+
+    const message = `
+${BOT_NAME} <b>📢 Broadcast Message</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+To send a message to all users, use:
+
+<code>/broadcast Your message here</code>
+
+Example:
+<code>/broadcast 🚀 New feature available! Check /help for details.</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, [[{ text: '◀️ Back', callback_data: 'admin' }]]);
+}
+
+/**
+ * Handle broadcast - Send message to all users
+ */
+export async function handleBroadcast(messageText) {
+    if (!isAdmin()) {
+        return sendMessage('❌ <b>Access Denied</b>\n\nThis command is only available to admins.');
+    }
+
+    if (!messageText || messageText.trim().length === 0) {
+        return handleBroadcastPrompt();
+    }
+
+    const supabase = (await import('../database/supabase.js')).getSupabase();
+
+    if (!supabase) {
+        return sendMessage('❌ Database not configured');
+    }
+
+    await sendMessage('📢 Broadcasting message...');
+
+    try {
+        const { data: users } = await supabase.from('users').select('telegram_id');
+
+        if (!users || users.length === 0) {
+            return sendMessage('❌ No users to broadcast to');
+        }
+
+        const broadcastMessage = `
+${BOT_NAME} <b>📢 Announcement</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+${messageText}
+
+━━━━━━━━━━━━━━━━━━━━━
+        `.trim();
+
+        let sent = 0;
+        let failed = 0;
+
+        for (const user of users) {
+            try {
+                await sendMessage(broadcastMessage, null, 'HTML', user.telegram_id);
+                sent++;
+            } catch (err) {
+                failed++;
+            }
+            // Small delay to avoid rate limiting
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        return sendMessage(`✅ <b>Broadcast Complete</b>\n\n📤 Sent: ${sent}\n❌ Failed: ${failed}`);
+    } catch (err) {
+        logError('Broadcast error', err);
+        return sendMessage('❌ Broadcast failed');
+    }
+}
+
 export default {
     isTelegramEnabled,
     setCurrentUser,
@@ -1222,8 +1969,8 @@ export default {
     handlePnL,
     handleHelp,
     handleWallet,
+    handleDeposit,
     handleCreateEvmWallet,
-    handleCreateSolanaWallet,
     handleToggleMode,
     handleBuy,
     executeConfirmedBuy,
@@ -1238,7 +1985,22 @@ export default {
     handlePortfolio,
     handleDCA,
     handleGas,
-    handleTools
+    handleTools,
+    // Onboarding functions
+    showOnboardingWelcome,
+    showOnboardingWallet,
+    showOnboardingTrading,
+    showOnboardingFeatures,
+    showOnboardingComplete,
+    skipOnboarding,
+    handleOnboarding,
+    // Admin functions
+    isAdmin,
+    handleAdmin,
+    handleAdminUsers,
+    handleAdminStats,
+    handleBroadcastPrompt,
+    handleBroadcast
 };
 
 /**

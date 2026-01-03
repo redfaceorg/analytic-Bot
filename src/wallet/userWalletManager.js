@@ -97,7 +97,7 @@ export async function getOrCreateUser(telegramId, username = null) {
                 telegram_id: telegramId,
                 username: username,
                 referral_code: referralCode,
-                settings: { mode: 'PAPER', take_profit: 5, stop_loss: 5 }
+                settings: { mode: 'PAPER', take_profit: 5, stop_loss: 5, onboarding_completed: false }
             })
             .select()
             .single();
@@ -449,6 +449,23 @@ export async function getUserMode(telegramId) {
     return user?.settings?.mode || 'PAPER';
 }
 
+/**
+ * Check if user has completed onboarding
+ */
+export async function hasCompletedOnboarding(telegramId) {
+    const user = await getUserByTelegramId(telegramId);
+    return user?.settings?.onboarding_completed === true;
+}
+
+/**
+ * Mark onboarding as complete for user
+ */
+export async function markOnboardingComplete(telegramId) {
+    const updated = await updateUserSettings(telegramId, { onboarding_completed: true });
+    logInfo(`Onboarding completed for user: ${telegramId}`);
+    return updated;
+}
+
 export default {
     getOrCreateUser,
     getUserByTelegramId,
@@ -461,5 +478,7 @@ export default {
     getWalletForTrading,
     getWalletSummary,
     toggleTradingMode,
-    getUserMode
+    getUserMode,
+    hasCompletedOnboarding,
+    markOnboardingComplete
 };
