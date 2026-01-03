@@ -657,27 +657,46 @@ ${BOT_NAME} <b>PnL Report</b>
  */
 export async function handleHelp() {
     const message = `
-${BOT_NAME} <b>Help</b>
+${BOT_NAME} <b>📚 Help & Tutorial</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-<b>Commands</b>
+<b>🎓 HOW TO PLACE A TRADE:</b>
+
+<b>Step 1:</b> Create a wallet
+• Tap <code>💼 Wallet</code> → Create EVM or Solana wallet
+
+<b>Step 2:</b> Deposit funds (for LIVE mode)
+• Copy your wallet address
+• Send BNB/ETH/SOL to it
+
+<b>Step 3:</b> Find a token to trade
+• Use <code>/token</code> + paste contract address
+• Example: <code>/token 0x123...abc</code>
+
+<b>Step 4:</b> Buy the token
+• Click <b>"Buy"</b> button on token info
+• Select amount (0.1, 0.5, or 1 BNB/ETH/SOL)
+• Confirm the trade!
+
+<b>Step 5:</b> Monitor & sell
+• Tap <code>📊 Positions</code> to see your trades
+• Click <b>"Sell"</b> when you want to exit
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>📝 PAPER vs 🔴 LIVE Mode:</b>
+• PAPER = Simulated trading (fake money)
+• LIVE = Real trades with your funds
+• Toggle mode in <code>⚙️ Settings</code>
+
+<b>🔧 Commands:</b>
 /start - Main menu
-/status - Bot status
-/positions - View positions
-/pnl - PnL report
-/help - This message
-
-<b>Strategy</b>
-Volume Spike Scalping
-• Entry: Volume 3x + Price +2%
-• Take Profit: ${config.takeProfit?.multiplier || 5}x
-• Stop Loss: ${config.risk?.stopLossPercent || 5}%
-• Max Hold: 30 min
-
-<b>Chains</b>
-• BSC (PancakeSwap)
-• Base (Aerodrome)
-• Solana (Raydium)
+/wallet - View wallets
+/positions - Open positions
+/pnl - Profit & Loss
+/token - Analyze any token
+/settings - Bot settings
+/referral - Earn from referrals
 
 ━━━━━━━━━━━━━━━━━━━━━
 <i>v${BOT_VERSION}</i>
