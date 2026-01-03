@@ -50,6 +50,13 @@ export function displayBanner() {
  * @returns {Promise<number>} Selected multiplier
  */
 export async function promptProfitMultiplier() {
+    // Skip prompt in non-interactive (headless/Docker) mode
+    if (!process.stdin.isTTY) {
+        const defaultMultiplier = 5;
+        console.log(`[Non-interactive mode] Using default profit multiplier: ${defaultMultiplier}x`);
+        return defaultMultiplier;
+    }
+
     const rl = createPrompt();
 
     console.log('');
