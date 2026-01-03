@@ -158,6 +158,12 @@ export async function promptWatchlist() {
  * Confirm settings before starting
  */
 export async function confirmStart(config) {
+    // Auto-confirm in non-interactive (headless/Docker) mode
+    if (!process.stdin.isTTY) {
+        console.log('[Non-interactive mode] Auto-confirming bot start');
+        return true;
+    }
+
     const rl = createPrompt();
 
     console.log('');
