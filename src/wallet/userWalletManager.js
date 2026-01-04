@@ -418,6 +418,27 @@ export async function getWalletForTrading(telegramId, chain) {
 }
 
 /**
+ * Export private key for user backup
+ * @param {string} telegramId - User's Telegram ID
+ * @param {string} chain - 'evm' or 'solana'
+ * @returns {Promise<{success: boolean, privateKey?: string, error?: string}>}
+ */
+export async function exportPrivateKey(telegramId, chain = 'evm') {
+    try {
+        const wallet = await getUserWallet(telegramId, chain);
+        if (!wallet || !wallet.encrypted_key) {
+            return { success: false, error: 'No wallet found for this chain' };
+        }
+
+        const privateKey = decryptKey(wallet.encrypted_key);
+        return { success: true, privateKey, address: wallet.address };
+    } catch (err) {
+        logError('exportPrivateKey error', err);
+        return { success: false, error: 'Failed to decrypt key' };
+    }
+}
+
+/**
  * Get user wallet summary for display with REAL balances
  */
 export async function getWalletSummary(telegramId) {
@@ -559,6 +580,7 @@ export default {
     createEvmWallet,
     createSolanaWallet,
     importWallet,
+    exportPrivateKey,
     getUserWallet,
     getUserWallets,
     getWalletForTrading,

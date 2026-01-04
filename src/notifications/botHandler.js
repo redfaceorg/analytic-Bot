@@ -16,6 +16,8 @@ import {
     handleDeposit,
     handleCreateEvmWallet,
     handleCreateSolanaWallet,
+    handleImportPrompt,
+    handleExportKey,
     handleToggleMode,
     handleBuy,
     executeConfirmedBuy,
@@ -414,9 +416,14 @@ async function handleCallback(query, chatId, username) {
         case 'wallet_toggle_mode':
             await handleToggleMode();
             break;
-        case 'wallet_import':
-            // Show import instructions
-            await handleWallet();
+        case 'wallet_import_prompt':
+            await handleImportPrompt();
+            break;
+        case 'wallet_export_evm':
+            await handleExportKey('evm');
+            break;
+        case 'wallet_export_sol':
+            await handleExportKey('solana');
             break;
         // Admin callbacks
         case 'admin':

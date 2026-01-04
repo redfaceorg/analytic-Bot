@@ -719,8 +719,16 @@ function getWalletKeyboard(hasEvm, hasSol) {
     }
 
     keyboard.push([
-        { text: '📥 Import Wallet', callback_data: 'wallet_import' }
+        { text: '📥 Import Wallet', callback_data: 'wallet_import_prompt' }
     ]);
+
+    // Export buttons if wallets exist
+    if (hasEvm) {
+        keyboard.push([{ text: '🔑 Export EVM Key', callback_data: 'wallet_export_evm' }]);
+    }
+    if (hasSol) {
+        keyboard.push([{ text: '🔑 Export Solana Key', callback_data: 'wallet_export_sol' }]);
+    }
 
     if (hasEvm || hasSol) {
         keyboard.push([
@@ -1097,6 +1105,73 @@ Deposit SOL to your address
 
     const summary = await getWalletSummary(telegramId);
     return sendMessage(message, getWalletKeyboard(summary.hasEvm, summary.hasSolana));
+}
+
+/**
+ * Handle import wallet prompt - shows instructions
+ */
+export async function handleImportPrompt() {
+    const message = `
+${BOT_NAME} <b>📥 Import Wallet</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+To import an existing wallet, send your private key:
+
+<b>For EVM (BSC/Base/ETH):</b>
+<code>/import_evm YOUR_PRIVATE_KEY</code>
+
+<b>For Solana:</b>
+<code>/import_sol YOUR_PRIVATE_KEY</code>
+
+⚠️ <b>Security Warning:</b>
+• Only import wallets you trust
+• Your key will be encrypted and stored securely
+• Delete the message after sending!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, [[{ text: '◀️ Back', callback_data: 'wallet' }]]);
+}
+
+/**
+ * Handle export private key - shows the key with spoiler
+ */
+export async function handleExportKey(chain) {
+    const telegramId = currentUserChatId?.toString();
+    if (!telegramId) {
+        return sendMessage('❌ User not identified. Please /start first.');
+    }
+
+    // Import the export function
+    const { exportPrivateKey } = await import('../wallet/userWalletManager.js');
+    const result = await exportPrivateKey(telegramId, chain);
+
+    if (!result.success) {
+        return sendMessage(`❌ ${result.error}`, [[{ text: '◀️ Back', callback_data: 'wallet' }]]);
+    }
+
+    const chainName = chain === 'evm' ? 'EVM (BSC/Base/ETH)' : 'Solana';
+    const message = `
+${BOT_NAME} <b>🔑 Export ${chainName} Private Key</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+📍 <b>Address:</b>
+<code>${result.address}</code>
+
+🔑 <b>Private Key:</b>
+<tg-spoiler><code>${result.privateKey}</code></tg-spoiler>
+
+⚠️ <b>SECURITY WARNING:</b>
+• Tap to reveal the key above
+• Copy and store securely
+• Never share with anyone
+• Delete this message after!
+
+━━━━━━━━━━━━━━━━━━━━━
+    `.trim();
+
+    return sendMessage(message, [[{ text: '◀️ Back', callback_data: 'wallet' }]]);
 }
 
 /**
@@ -2543,6 +2618,8 @@ export default {
     handleWallet,
     handleDeposit,
     handleCreateEvmWallet,
+    handleImportPrompt,
+    handleExportKey,
     handleToggleMode,
     handleBuy,
     executeConfirmedBuy,
