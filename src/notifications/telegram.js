@@ -1607,6 +1607,81 @@ ${BOT_NAME} <b>Settings</b>
 }
 
 /**
+ * Handle Take Profit settings
+ */
+export async function handleTPSettings() {
+    const currentTP = config.takeProfit?.multiplier || 5;
+    const message = `
+${BOT_NAME} <b>🎯 Take Profit Settings</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Current: <b>${currentTP}x</b>
+
+Select your take profit multiplier:
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: currentTP === 2 ? '✅ 2x' : '2x', callback_data: 'set_tp_2' },
+            { text: currentTP === 3 ? '✅ 3x' : '3x', callback_data: 'set_tp_3' },
+            { text: currentTP === 5 ? '✅ 5x' : '5x', callback_data: 'set_tp_5' }
+        ],
+        [
+            { text: currentTP === 10 ? '✅ 10x' : '10x', callback_data: 'set_tp_10' },
+            { text: currentTP === 20 ? '✅ 20x' : '20x', callback_data: 'set_tp_20' },
+            { text: currentTP === 50 ? '✅ 50x' : '50x', callback_data: 'set_tp_50' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'settings' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Handle Stop Loss settings
+ */
+export async function handleSLSettings() {
+    const currentSL = config.risk?.stopLossPercent || 5;
+    const message = `
+${BOT_NAME} <b>🛑 Stop Loss Settings</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Current: <b>${currentSL}%</b>
+
+Select your stop loss percentage:
+    `.trim();
+
+    const keyboard = [
+        [
+            { text: currentSL === 3 ? '✅ 3%' : '3%', callback_data: 'set_sl_3' },
+            { text: currentSL === 5 ? '✅ 5%' : '5%', callback_data: 'set_sl_5' },
+            { text: currentSL === 10 ? '✅ 10%' : '10%', callback_data: 'set_sl_10' }
+        ],
+        [
+            { text: currentSL === 15 ? '✅ 15%' : '15%', callback_data: 'set_sl_15' },
+            { text: currentSL === 20 ? '✅ 20%' : '20%', callback_data: 'set_sl_20' },
+            { text: currentSL === 25 ? '✅ 25%' : '25%', callback_data: 'set_sl_25' }
+        ],
+        [{ text: '◀️ Back', callback_data: 'settings' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
+/**
+ * Apply TP/SL setting change
+ */
+export async function applyTPSetting(value) {
+    config.takeProfit.multiplier = value;
+    return sendMessage(`✅ Take Profit set to <b>${value}x</b>`, [[{ text: '◀️ Back', callback_data: 'settings' }]]);
+}
+
+export async function applySLSetting(value) {
+    config.risk.stopLossPercent = value;
+    return sendMessage(`✅ Stop Loss set to <b>${value}%</b>`, [[{ text: '◀️ Back', callback_data: 'settings' }]]);
+}
+
+/**
  * Handle referral info with REAL stats
  */
 export async function handleReferral(userId) {
@@ -2626,6 +2701,10 @@ export default {
     handleToken,
     handleSell,
     handleSettings,
+    handleTPSettings,
+    handleSLSettings,
+    applyTPSetting,
+    applySLSetting,
     handleReferral,
     handleLeaderboard,
     handleCopyTrading,

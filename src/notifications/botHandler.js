@@ -25,6 +25,10 @@ import {
     handleToken,
     handleSell,
     handleSettings,
+    handleTPSettings,
+    handleSLSettings,
+    applyTPSetting,
+    applySLSetting,
     handleReferral,
     handleLeaderboard,
     handleCopyTrading,
@@ -345,6 +349,50 @@ async function handleCallback(query, chatId, username) {
             break;
         case 'settings':
             await handleSettings();
+            break;
+        case 'settings_tp':
+            await handleTPSettings();
+            break;
+        case 'settings_sl':
+            await handleSLSettings();
+            break;
+        // TP value changes
+        case 'set_tp_2':
+            await applyTPSetting(2);
+            break;
+        case 'set_tp_3':
+            await applyTPSetting(3);
+            break;
+        case 'set_tp_5':
+            await applyTPSetting(5);
+            break;
+        case 'set_tp_10':
+            await applyTPSetting(10);
+            break;
+        case 'set_tp_20':
+            await applyTPSetting(20);
+            break;
+        case 'set_tp_50':
+            await applyTPSetting(50);
+            break;
+        // SL value changes
+        case 'set_sl_3':
+            await applySLSetting(3);
+            break;
+        case 'set_sl_5':
+            await applySLSetting(5);
+            break;
+        case 'set_sl_10':
+            await applySLSetting(10);
+            break;
+        case 'set_sl_15':
+            await applySLSetting(15);
+            break;
+        case 'set_sl_20':
+            await applySLSetting(20);
+            break;
+        case 'set_sl_25':
+            await applySLSetting(25);
             break;
         case 'toggle_mode':
             await handleToggleMode(chatId);
