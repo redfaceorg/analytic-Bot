@@ -209,8 +209,8 @@ export async function createEvmWallet(telegramId) {
         return {
             success: true,
             address: address,
+            privateKey: privateKey, // Return for user to backup - shown once
             chain: 'evm'
-            // DO NOT return private key to user after creation for security
         };
     } catch (err) {
         logError('createEvmWallet error', err);
@@ -264,6 +264,7 @@ export async function createSolanaWallet(telegramId) {
         return {
             success: true,
             address: address,
+            privateKey: privateKey, // Return for user to backup - shown once
             chain: 'solana'
         };
     } catch (err) {

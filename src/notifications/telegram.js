@@ -1026,7 +1026,7 @@ export async function handleCreateEvmWallet() {
     }
 
     const message = `
-${BOT_NAME} <b>New EVM Wallet Created</b>
+${BOT_NAME} <b>🔐 New EVM Wallet Created</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
 ✅ <b>Wallet Created Successfully!</b>
@@ -1034,12 +1034,17 @@ ${BOT_NAME} <b>New EVM Wallet Created</b>
 📍 <b>Address:</b>
 <code>${result.address}</code>
 
-🔐 <b>Private Key:</b> Stored securely (encrypted)
+🔑 <b>Private Key (SAVE THIS!):</b>
+<tg-spoiler><code>${result.privateKey}</code></tg-spoiler>
 
-⚠️ <b>IMPORTANT:</b>
-• Fund this wallet to start trading
-• Your key is encrypted in database
-• Deposit BNB (BSC) or ETH (Base)
+⚠️ <b>IMPORTANT - READ CAREFULLY:</b>
+• <b>Tap to reveal</b> your private key above
+• <b>Copy and save it securely</b> (password manager)
+• <b>Never share</b> with anyone
+• <b>This is shown ONCE</b> - save it now!
+
+💰 <b>To start trading:</b>
+Deposit BNB (BSC) or ETH (Base) to your address
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
@@ -1067,7 +1072,7 @@ export async function handleCreateSolanaWallet() {
     }
 
     const message = `
-${BOT_NAME} <b>New Solana Wallet Created</b>
+${BOT_NAME} <b>🔐 New Solana Wallet Created</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
 ✅ <b>Wallet Created Successfully!</b>
@@ -1075,12 +1080,17 @@ ${BOT_NAME} <b>New Solana Wallet Created</b>
 📍 <b>Address:</b>
 <code>${result.address}</code>
 
-🔐 <b>Private Key:</b> Stored securely (encrypted)
+🔑 <b>Private Key (SAVE THIS!):</b>
+<tg-spoiler><code>${result.privateKey}</code></tg-spoiler>
 
-⚠️ <b>IMPORTANT:</b>
-• Fund this wallet to start trading
-• Your key is encrypted in database
-• Deposit SOL to start
+⚠️ <b>IMPORTANT - READ CAREFULLY:</b>
+• <b>Tap to reveal</b> your private key above
+• <b>Copy and save it securely</b> (password manager)
+• <b>Never share</b> with anyone
+• <b>This is shown ONCE</b> - save it now!
+
+💰 <b>To start trading:</b>
+Deposit SOL to your address
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
