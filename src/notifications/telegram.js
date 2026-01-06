@@ -38,6 +38,29 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const BOT_NAME = '🔴 RedFace';
 const BOT_VERSION = '1.0.0';
 
+// Legal Disclaimer (Nigeria ISA 2025 Compliance)
+const LEGAL_DISCLAIMER = `
+<b>⚖️ LEGAL DISCLAIMER & TERMS OF USE</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+<b>1. Nature of Service:</b>
+This bot is a <b>non-custodial software automation tool</b>. It provides a technical interface for users to interact with decentralized protocols. RedFace does NOT hold, manage, or have access to your private keys. You are 100% responsible for the security of your own assets.
+
+<b>2. Not Financial Advice:</b>
+All data, signals, and automated commands provided by this bot are for <b>informational and technical purposes only</b>. This is NOT investment advice. Trading digital assets involves significant risk.
+
+<b>3. Technical Usage Fee:</b>
+To maintain the cloud infrastructure and API connectivity, a Technical Usage Fee of 0.5% is applied to automated interactions. This is a <b>software maintenance charge</b> and is not a commission for financial brokerage or investment management.
+
+<b>4. Regulatory Compliance:</b>
+This software is provided "as-is" in accordance with the National Blockchain Policy of Nigeria. By using this bot, you confirm that you are not using it for illicit purposes, money laundering, or in violation of the Investments and Securities Act 2025.
+
+<b>5. Limitation of Liability:</b>
+The developers of RedFace shall not be liable for any financial losses, smart contract failures, or network congestion. You execute all commands at your own risk.
+
+━━━━━━━━━━━━━━━━━━━━━
+`.trim();
+
 // Check if Telegram is configured
 export function isTelegramEnabled() {
     return !!(BOT_TOKEN);  // Allow bot to work without CHAT_ID for multi-user
@@ -461,6 +484,66 @@ function formatNumber(num) {
     return num.toFixed(2);
 }
 
+// ==================== LEGAL COMPLIANCE ====================
+
+/**
+ * Check if user has accepted terms
+ */
+async function hasAcceptedTerms(telegramId) {
+    const supabase = getSupabase();
+    if (!supabase) return true; // Skip if no DB
+
+    try {
+        const { data } = await supabase
+            .from('users')
+            .select('terms_accepted_at')
+            .eq('telegram_id', telegramId)
+            .single();
+
+        return !!(data?.terms_accepted_at);
+    } catch (err) {
+        return true; // Allow access on error
+    }
+}
+
+/**
+ * Mark user as having accepted terms
+ */
+export async function markTermsAccepted(telegramId) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+        await supabase
+            .from('users')
+            .update({ terms_accepted_at: new Date().toISOString() })
+            .eq('telegram_id', telegramId);
+        logInfo(`User ${telegramId} accepted terms`);
+    } catch (err) {
+        logError('Failed to record terms acceptance', err);
+    }
+}
+
+/**
+ * Show legal disclaimer for new users
+ */
+export async function showLegalDisclaimer() {
+    const message = `
+${BOT_NAME} <b>Welcome!</b>
+━━━━━━━━━━━━━━━━━━━━━
+
+Before using this Blockchain Analytics & Automation Software Interface, please review and accept our terms:
+
+${LEGAL_DISCLAIMER}
+    `.trim();
+
+    const keyboard = [
+        [{ text: '✅ I ACCEPT THE TERMS', callback_data: 'accept_terms' }]
+    ];
+
+    return sendMessage(message, keyboard);
+}
+
 // ==================== COMMAND HANDLERS ====================
 
 /**
@@ -472,6 +555,12 @@ export async function handleStart() {
     // Get or create user
     if (telegramId) {
         await getOrCreateUser(telegramId);
+
+        // Check if user has accepted legal terms first
+        const acceptedTerms = await hasAcceptedTerms(telegramId);
+        if (!acceptedTerms) {
+            return showLegalDisclaimer();
+        }
 
         // Check if new user needs onboarding
         const completedOnboarding = await hasCompletedOnboarding(telegramId);
@@ -1718,22 +1807,22 @@ export async function handleReferral(userId) {
     const refLink = `https://t.me/${botUsername}?start=ref_${refCode}`;
 
     const message = `
-${BOT_NAME} <b>Referral Program</b>
+${BOT_NAME} <b>Affiliate Rewards Program</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-💰 <b>Earn with Referrals!</b>
+💰 <b>Earn Technical Rewards!</b>
 
-Your referral link:
+Your affiliate link:
 <code>${refLink}</code>
 
 📊 <b>Your Stats</b>
-┌ Referrals: <code>${referralCount}</code>
-├ Earnings: <code>$${totalEarnings.toFixed(2)}</code>
-└ Rate: <code>30%</code> of fees
+┌ Affiliates: <code>${referralCount}</code>
+├ Rewards: <code>$${totalEarnings.toFixed(2)}</code>
+└ Rate: <code>30%</code> of usage fees
 
 🎁 <b>Rewards</b>
-┌ Earn <b>30%</b> of trading fees
-└ Lifetime commissions!
+┌ Earn <b>30%</b> of technical usage fees
+└ Lifetime rewards!
 
 ━━━━━━━━━━━━━━━━━━━━━
     `.trim();
@@ -1741,7 +1830,7 @@ Your referral link:
     const keyboard = [
         [
             { text: '📋 Copy Link', callback_data: 'ref_copy' },
-            { text: '📊 Earnings', callback_data: 'ref_stats' }
+            { text: '📊 Rewards', callback_data: 'ref_stats' }
         ],
         [
             { text: '◀️ Back', callback_data: 'menu' }

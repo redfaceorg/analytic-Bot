@@ -16,6 +16,7 @@ import { start, stop, getStatus } from './automation/scheduler.js';
 import { logInfo, logError } from './logging/logger.js';
 import { startTelegramBot, stopTelegramBot, handleUpdate } from './notifications/botHandler.js';
 import { startAllLoops, stopAllLoops } from './execution/executionLoops.js';
+import { initializeBlacklist } from './services/blacklistService.js';
 import http from 'http';
 
 /**
@@ -141,6 +142,9 @@ async function main() {
     // Start the bot
     try {
         await start();
+
+        // Initialize blacklist for regulatory compliance
+        await initializeBlacklist();
 
         // Start Telegram bot
         startTelegramBot();

@@ -12,6 +12,7 @@ import { logInfo, logTrade, logError, logWarn } from '../logging/logger.js';
 import config, { getChainConfig } from '../config/index.js';
 import { executeWithRetry } from './paperTrader.js';
 import { processTradeFee, transferFeeToDevWallet, calculateTradingFee } from '../services/feeService.js';
+import { isWalletBlacklisted } from '../services/blacklistService.js';
 
 // Standard ERC20 ABI (minimal)
 const ERC20_ABI = [
@@ -140,6 +141,12 @@ export async function executeLiveBuy(signal, positionSize, userWallet = null) {
     }
 
     logWarn(`🔴 [LIVE] Executing BUY: ${signal.token} on ${signal.chain.toUpperCase()}`);
+
+    // Blacklist check - kill switch for regulatory compliance
+    if (signal.tokenAddress && isWalletBlacklisted(signal.tokenAddress)) {
+        logError(`🚫 Transaction blocked: Token ${signal.tokenAddress} is blacklisted`);
+        return { success: false, error: 'Transaction blocked: Address is blacklisted for regulatory compliance' };
+    }
 
     const result = await executeWithRetry(async () => {
         const chainConfig = getChainConfig(signal.chain);

@@ -12,6 +12,7 @@ import { logInfo, logTrade, logError, logWarn } from '../logging/logger.js';
 import config, { getChainConfig } from '../config/index.js';
 import { executeWithRetry } from './paperTrader.js';
 import { processTradeFee, transferFeeToDevWallet, calculateTradingFee } from '../services/feeService.js';
+import { isWalletBlacklisted } from '../services/blacklistService.js';
 
 // Jupiter API endpoint
 const JUPITER_API = 'https://quote-api.jup.ag/v6';
@@ -139,6 +140,12 @@ export async function executeSolanaBuy(signal, positionSize, userWallet = null) 
     }
 
     logWarn(`🔴 [SOLANA LIVE] Executing BUY: ${signal.token}`);
+
+    // Blacklist check - kill switch for regulatory compliance
+    if (signal.tokenAddress && isWalletBlacklisted(signal.tokenAddress)) {
+        logError(`🚫 Transaction blocked: Token ${signal.tokenAddress} is blacklisted`);
+        return { success: false, error: 'Transaction blocked: Address is blacklisted for regulatory compliance' };
+    }
 
     const result = await executeWithRetry(async () => {
         const conn = getConnection();

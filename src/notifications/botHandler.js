@@ -57,7 +57,9 @@ import {
     // Trade history
     handleTradeHistory,
     // Referral with code
-    handleStartWithReferral
+    handleStartWithReferral,
+    // Legal compliance
+    markTermsAccepted
 } from './telegram.js';
 
 import { executeWithdrawal } from '../wallet/userWalletManager.js';
@@ -115,7 +117,7 @@ async function registerBotCommands() {
         { command: 'positions', description: '📊 Open Positions' },
         { command: 'pnl', description: '💰 Profit & Loss' },
         { command: 'token', description: '🔍 Analyze Token' },
-        { command: 'referral', description: '🔗 Referral Program' },
+        { command: 'referral', description: '🔗 Affiliate Rewards' },
         { command: 'settings', description: '⚙️ Settings' },
         { command: 'help', description: '❓ Help' }
     ];
@@ -346,6 +348,11 @@ async function handleCallback(query, chatId, username) {
             break;
         case 'help':
             await handleHelp();
+            break;
+        // Legal compliance
+        case 'accept_terms':
+            await markTermsAccepted(chatId);
+            await handleStart();
             break;
         case 'settings':
             await handleSettings();

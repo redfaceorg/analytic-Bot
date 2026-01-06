@@ -143,7 +143,7 @@ export function getFeeSummary() {
  */
 export function formatFeeMessage(tradeAmountUsd) {
     const fee = calculateTradingFee(tradeAmountUsd);
-    return `💰 Trading Fee: $${fee.toFixed(4)} (${TRADING_FEE_PERCENT}%)`;
+    return `💰 Technical Usage Fee: $${fee.toFixed(4)} (${TRADING_FEE_PERCENT}%)`;
 }
 
 /**
