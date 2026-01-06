@@ -88,10 +88,37 @@ const healthServer = http.createServer(async (req, res) => {
     }));
 });
 
+/**
+ * Keep-alive mechanism to prevent Render sleep
+ */
+function startKeepAlive() {
+    const appUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
+
+    if (!appUrl) {
+        logInfo('Keep-alive: No external URL found (RENDER_EXTERNAL_URL or APP_URL). Skipping self-ping.');
+        return;
+    }
+
+    // Ping every 14 minutes (Render sleeps after 15 mins of inactivity)
+    const interval = 14 * 60 * 1000;
+
+    logInfo(`Starting keep-alive service for ${appUrl}`);
+
+    setInterval(() => {
+        http.get(appUrl, (res) => {
+            logInfo(`Keep-alive ping sent to ${appUrl}. Status: ${res.statusCode}`);
+        }).on('error', (err) => {
+            logError('Keep-alive ping failed', err);
+        });
+    }, interval);
+}
+
 // Start health server in cloud environment
 if (process.env.PORT || process.env.KOYEB_REGION) {
     healthServer.listen(PORT, () => {
         console.log(`Health check server running on port ${PORT}`);
+        // Start keep-alive after server is running
+        startKeepAlive();
     });
 }
 
